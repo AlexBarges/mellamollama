@@ -2,6 +2,7 @@
   "version": 2,
   "routes": [
     { "src": "/api/send-email", "dest": "/api/send-email.js" },
+    { "src": "/assets/(.*)", "dest": "/site/assets/$1" },
     { "src": "/(.*)", "dest": "/site/index.html" }
   ]
 }

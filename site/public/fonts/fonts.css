@@ -1,0 +1,44 @@
+
+@font-face {
+  font-family: 'ZAG-NORMAL';
+  src: url('ZAG-NORMAL.woff2') format('woff2'),
+       url('ZAG-NORMAL.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+
+@font-face {
+  font-family: 'TT0246M_';
+  src: url('TT0246M_.woff2') format('woff2'),
+       url('TT0246M_.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+
+@font-face {
+  font-family: 'SQUARE721_BT_BOLD';
+  src: url('SQUARE721_BT_BOLD.woff2') format('woff2'),
+       url('SQUARE721_BT_BOLD.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+
+@font-face {
+  font-family: 'SQUARE721_CN_BT_ROMAN';
+  src: url('SQUARE721_CN_BT_ROMAN.woff2') format('woff2'),
+       url('SQUARE721_CN_BT_ROMAN.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+
+@font-face {
+  font-family: 'SQUARE721_CN_BT_BOLD';
+  src: url('SQUARE721_CN_BT_BOLD.woff2') format('woff2'),
+       url('SQUARE721_CN_BT_BOLD.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}

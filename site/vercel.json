@@ -1,9 +1,8 @@
 {
   "version": 2,
   "routes": [
-    { "src": "/CITAS7.html", "dest": "/CITAS7.html" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "handle": "filesystem" }
   ],
   "rewrites": [
     { "source": "/citas7", "destination": "/CITAS7.html" }

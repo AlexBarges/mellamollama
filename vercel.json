@@ -1,11 +1,10 @@
 {
   "version": 2,
   "routes": [
+    { "src": "/site/CITAS7.html", "dest": "/site/CITAS7.html" },
     { "handle": "filesystem" },
     { "src": "/site/(.*)", "dest": "/site/index.html" }
-  ]
-}
-{
+  ],
   "rewrites": [
     { "source": "/citas7", "destination": "/site/CITAS7.html" }
   ]

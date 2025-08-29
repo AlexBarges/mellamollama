@@ -24,7 +24,7 @@ module.exports = async (req, res) => {
   try {
     const { to, subject, html, data } = await readJsonBody(req);
 
-    // Si no envías `html` en el body, toma la plantilla del repo:
+    // Si no envías `html` en el body, usa la plantilla del repo:
     let emailHtml = html;
     if (!emailHtml) {
       const tplPath = path.join(process.cwd(), 'site', 'emails', 'email_generado7.html');
@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
 
     const msg = {
       to: to || process.env.SENDGRID_TO,
-      from: process.env.SENDGRID_FROM,
+      from: process.env.SENDGRID_FROM,     // remitente verificado en SendGrid
       subject: subject || 'Nueva consulta',
       html: emailHtml
     };

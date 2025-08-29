@@ -1,4 +1,4 @@
-// site/api/send-email.js — usa la API HTTP de SendGrid (sin dependencias)
+// site/api/send-email.js — SendGrid vía HTTP (sin dependencias) + TEST por GET
 const fs = require('fs');
 const path = require('path');
 
@@ -13,20 +13,47 @@ async function readJsonBody(req) {
 }
 
 module.exports = async (req, res) => {
+  // === TEST RÁPIDO: visitar /api/send-email?test=1 envía un correo de prueba ===
+  if (req.method === 'GET' && /\btest=1\b/.test(req.url || '')) {
+    try {
+      const to = process.env.SENDGRID_TO || 'alexbargesrj@gmail.com';
+      const from = process.env.SENDGRID_FROM;
+      const html = `<div style="font-family:Arial">Prueba OK desde GET.<br/>Hora: ${new Date().toISOString()}</div>`;
+      const payload = {
+        personalizations: [{ to: [{ email: to }] }],
+        from: { email: from },
+        subject: 'Prueba (GET) — CITAS7',
+        content: [{ type: 'text/html', value: html }]
+      };
+      const r = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${process.env.SENDGRID_API_KEY}`,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      const txt = await r.text();
+      if (!r.ok) return res.status(r.status).send(txt || r.statusText);
+      return res.status(200).send('OK');
+    } catch (e) {
+      return res.status(500).send(e?.message || 'send failed');
+    }
+  }
+
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+    res.setHeader('Allow', 'POST, GET');
     return res.status(405).json({ ok:false, error:'Method not allowed' });
   }
 
   try {
     const { to, subject, html, data, message } = await readJsonBody(req);
 
-    // 1) localizar la plantilla (root = site/)
+    // localizar plantilla (root=site/)
     let tplPath = null;
     const candidates = [
       'emails/email_generado7.html',
       'email/email_generado7.html',
-      // fallbacks si algún día cambias el root del proyecto
       'site/emails/email_generado7.html',
       'site/email/email_generado7.html'
     ].map(p => path.join(process.cwd(), p));
@@ -35,14 +62,14 @@ module.exports = async (req, res) => {
 
     let emailHtml = html || fs.readFileSync(tplPath, 'utf8');
 
-    // 2) reemplazo de {{llaves}} si existen en la plantilla
+    // reemplazo de {{llaves}}
     if (data && typeof data === 'object') {
       for (const [k, v] of Object.entries(data)) {
         emailHtml = emailHtml.replaceAll(`{{${k}}}`, String(v ?? ''));
       }
     }
 
-    // 3) bloque-resumen (por si la plantilla no tiene llaves)
+    // bloque resumen
     if (data && typeof data === 'object') {
       const esc = s => String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
       const resumen = `
@@ -58,7 +85,6 @@ module.exports = async (req, res) => {
       emailHtml = emailHtml.replace(/<body[^>]*>/i, m => m + resumen);
     }
 
-    // 4) mensaje adicional al final (opcional)
     if (typeof message === 'string' && message.trim()) {
       const esc = s => String(s||'').replace(/[&<>"]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
       const caja = `
@@ -68,12 +94,10 @@ module.exports = async (req, res) => {
       emailHtml = emailHtml.replace(/<\/body\s*>/i, caja + '$&');
     }
 
-    // 5) envío por API HTTP de SendGrid (no requiere @sendgrid/mail)
+    // envío
     const payload = {
-      personalizations: [{
-        to: [{ email: to || process.env.SENDGRID_TO || 'alexbargesrj@gmail.com' }]
-      }],
-      from: { email: process.env.SENDGRID_FROM },  // remitente verificado en SendGrid
+      personalizations: [{ to: [{ email: to || process.env.SENDGRID_TO || 'alexbargesrj@gmail.com' }] }],
+      from: { email: process.env.SENDGRID_FROM },
       subject: subject || 'Nueva reserva',
       content: [{ type: 'text/html', value: emailHtml }]
     };
@@ -87,14 +111,10 @@ module.exports = async (req, res) => {
       body: JSON.stringify(payload)
     });
 
-    if (!r.ok) {
-      const txt = await r.text();
-      return res.status(r.status).json({ ok:false, error: txt || r.statusText });
-    }
-
+    const txt = await r.text();
+    if (!r.ok) return res.status(r.status).json({ ok:false, error: txt || r.statusText });
     return res.status(200).json({ ok:true });
   } catch (e) {
     return res.status(500).json({ ok:false, error: e?.message || 'send failed' });
   }
 };
-

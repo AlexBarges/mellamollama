@@ -21,11 +21,12 @@
         const res = await fetch('/api/send-email', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ message: getMsg(), subject:'Mensaje desde el formulario'})
-        });
-        alert(await res.text());
-      }catch(e){ alert('Error: '+e.message); }
-    }
+          - body: JSON.stringify({ message: getMsg(), subject:'Mensaje desde el formulario'})
++ body: JSON.stringify({
++   to: 'alexbargesrj@gmail.com',                 // ← tu email
++   subject: 'Mensaje desde el formulario',
++   message: getMsg()
++ })
 
     function abrirGmail(){
       const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(DEST_EMAIL)}&su=Mensaje&body=${encodeURIComponent(getMsg())}`;

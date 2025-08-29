@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>POST /api/send-email</title>
+<button id="send">Enviar test</button>
+<pre id="out"></pre>
+<script>
+document.getElementById('send').onclick = async () => {
+  const out = document.getElementById('out');
+  out.textContent = 'Enviando...';
+  try {
+    const r = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        to: 'alexbargesrj@gmail.com',              // destinatario de prueba
+        subject: 'Test POST CITAS7',
+        html: '<div style="font-family:Arial">Hola 👋 — Prueba POST</div>'
+      })
+    });
+    const txt = await r.text();
+    out.textContent = `STATUS ${r.status} ${txt}`;
+  } catch (e) {
+    out.textContent = 'ERROR ' + e.message;
+  }
+};
+</script>

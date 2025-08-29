@@ -128,171 +128,77 @@
   <div class="toast" id="toast">Listo</div>
 
 <script>
-(() => {
-  const $ = (sel, ctx=document) => ctx.querySelector(sel);
-  const $$ = (sel, ctx=document) => [...ctx.querySelectorAll(sel)];
-  const months = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-  const pad=n=>String(n).padStart(2,'0');
-  const toISODate=d=>[d.getFullYear(), pad(d.getMonth()+1), pad(d.getDate())].join('-');
-  const minutes=(h,m)=>h*60+m;
-  const fmtHM=mins=>`${pad(Math.floor(mins/60))}:${pad(mins%60)}`;
-  const now=()=>new Date();
-  function isValidEmail(s){ const el=document.createElement('input'); el.type='email'; el.value=s; return el.checkValidity(); }
-  const START_MIN=minutes(8,0), DURATION=75, BREAK=15, STEP=DURATION+BREAK, END_LIMIT=minutes(22,0);
-  const LAST_START=END_LIMIT-DURATION, LAST_START_ALIGNED=START_MIN+Math.floor((LAST_START-START_MIN)/STEP)*STEP;
-  const SLOT_STARTS=(()=>{const a=[]; for(let t=START_MIN;t<=LAST_START_ALIGNED;t+=STEP) a.push(t); return a;})();
-  const LEAD_HOURS=48;
+// ... (todo tu código anterior)
 
-  let view=new Date(); view.setDate(1);
-  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'local'; $('#tz').textContent=tz;
-  const updateTodayChip=()=>$('#todayChip').textContent=`${toISODate(now())} · ${pad(now().getHours())}:${pad(now().getMinutes())}`; updateTodayChip();
-  const STORAGE_KEY='reservas_cal_v1', PROFILE_KEY='reservas_profile';
-  const read=()=>JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-  const save=d=>localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
-  const readProfile=()=>JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}');
-  const saveProfile=p=>localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-  function sameDay(a,b){return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();}
-  function isWeekend(date){const wd=(date.getDay()||7); return wd===6||wd===7;}
-  function isPastDate(date){const t0=new Date(now().getFullYear(),now().getMonth(),now().getDate()); const d0=new Date(date.getFullYear(),date.getMonth(),date.getDate()); return d0<t0;}
-  function isPastTime(date,startMins){ if(!sameDay(date,now())) return false; const nm=minutes(now().getHours(),now().getMinutes()); return startMins<nm; }
-  function slotDateTime(date,startMins){ return new Date(date.getFullYear(),date.getMonth(),date.getDate(), Math.floor(startMins/60), startMins%60); }
-  function hasLeadTime(date,startMins){ return (slotDateTime(date,startMins)-now())>=LEAD_HOURS*60*60*1000; }
+form.addEventListener('submit', e=>{
+  e.preventDefault();
+  if(chosenStart===null||!currentDate) return;
 
-  function render(){
-    $('#monthName').textContent=months[view.getMonth()]; $('#year').textContent=view.getFullYear();
-    const grid=$('#grid'); grid.innerHTML='';
-    const first=new Date(view.getFullYear(),view.getMonth(),1);
-    const last=new Date(view.getFullYear(),view.getMonth()+1,0);
-    const startOffset=((first.getDay()||7)-1);
-    for(let i=0;i<startOffset;i++) grid.appendChild(blankCell());
-    for(let d=1; d<=last.getDate(); d++) grid.appendChild(dayCell(new Date(view.getFullYear(),view.getMonth(),d)));
-  }
-  function blankCell(){ const el=document.createElement('div'); el.className='day'; el.style.visibility='hidden'; return el; }
-  function dayCell(date){
-    const el=document.createElement('div'); el.className='day'; el.tabIndex=0;
-    const num=document.createElement('div'); num.className='num'; num.textContent=date.getDate();
-    if(sameDay(date,now())) el.classList.add('today');
-    const weekend=isWeekend(date); if(weekend) el.classList.add('weekend');
-    const past=isPastDate(date); if(past) el.classList.add('past');
-    const dayISO=toISODate(date); const list=read().filter(b=>b.date===dayISO);
-    let dotColor='#9ae6b4';
-    if(weekend) dotColor='#98a1aa';
-    else if(past) dotColor='#fca5a5';
-    else if(sameDay(date,now())) dotColor='#f6e05e';
-    else { const hasAvail=SLOT_STARTS.some(s=>hasLeadTime(date,s)&&!list.some(b=>b.start===fmtHM(s))); dotColor = hasAvail ? '#9ae6b4' : '#fca5a5'; }
-    const dots=document.createElement('div'); dots.className='dots'; const dot=document.createElement('i'); dot.className='dot'; dot.style.background=dotColor; dots.appendChild(dot);
-    el.appendChild(num); el.appendChild(dots);
-    el.addEventListener('click', ()=> openDay(date));
-    return el;
+  const name  = $('#iNombre').value.trim();
+  const level = $('#iNivel').value.trim();
+  const email = $('#iEmail').value.trim().toLowerCase();
+  if(!name||!level||!email) return toast('Completa todos los campos');
+  if(!isValidEmail(email)) return toast('Correo no válido');
+
+  saveProfile({name, level, email});
+
+  const dayISO = toISODate(currentDate);
+  const start  = chosenStart;
+  const end    = start + DURATION;
+
+  const dataList = read();
+  if(dataList.some(b=>b.date===dayISO && b.start===fmtHM(start))) return toast('Esa franja ya está reservada');
+  if(isWeekend(currentDate)) return toast('No se aceptan reservas en fines de semana');
+  if(isPastDate(currentDate)||isPastTime(currentDate,start)) return toast('No se puede reservar en el pasado');
+  if(!hasLeadTime(currentDate,start)) return toast('Debes reservar con ≥48 horas de anticipación');
+
+  // Regla 2 franjas consecutivas
+  const ownToday = dataList.filter(b=>b.email===email && b.date===dayISO).map(b=>b.start).sort();
+  if(ownToday.length>=2) return toast('Ya tienes 2 reservas consecutivas en este día.');
+  if(ownToday.length===1){
+    const onlyStart = Number(ownToday[0].slice(0,2))*60 + Number(ownToday[0].slice(3));
+    if(!(start===onlyStart+90 || start===onlyStart-90))
+      return toast('Solo puedes añadir la franja consecutiva (±1:30) en este día.');
   }
 
-  const backdrop=$('#backdrop'), slotsBox=$('#slots'), bookingsBox=$('#bookings');
-  const chosen=$('#chosen'), btnSave=$('#btnSave'), form=$('#form');
-  let currentDate=null, chosenStart=null;
+  const id = `${dayISO}-${fmtHM(start)}-${email}`;
+  dataList.push({
+    id, date:dayISO,
+    start:fmtHM(start), end:fmtHM(end),
+    name, level, email,
+    status:'pending',
+    createdAt:new Date().toISOString()
+  });
+  save(dataList);
 
-  function openDay(date){
-    currentDate=date; chosenStart=null; chosen.textContent='Ninguna';
-    $('#modalTitle').textContent=`${toISODate(date)} — ${months[date.getMonth()]}`;
-    backdrop.style.display='flex'; backdrop.setAttribute('aria-hidden','false');
-    renderDay(date);
-    const p=readProfile(); if(p.name) $('#iNombre').value=p.name; if(p.level) $('#iNivel').value=p.level; if(p.email) $('#iEmail').value=p.email;
-    btnSave.disabled=true;
-  }
-  function closeDay(){ backdrop.style.display='none'; backdrop.setAttribute('aria-hidden','true'); }
-  $('#closeModal').addEventListener('click', closeDay);
-  backdrop.addEventListener('click', e=>{ if(e.target===backdrop) closeDay(); });
+  // ---- NUEVO: construir fecha/hora legibles y asunto "Reservación de cita — Nombre"
+  const whenDT       = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), Math.floor(start/60), start%60);
+  const fechaLegible = new Intl.DateTimeFormat('es-ES',{dateStyle:'full'}).format(whenDT);
+  const horaLegible  = `${String(whenDT.getHours()).padStart(2,'0')}:${String(whenDT.getMinutes()).padStart(2,'0')}–${fmtHM(end)}`;
+  const asunto       = `Reservación de cita — ${name}`;
 
-  function renderDay(date){
-    slotsBox.innerHTML=''; bookingsBox.innerHTML='';
-    const dayISO=toISODate(date); const list=read().filter(b=>b.date===dayISO);
-    if(list.length){
-      list.sort((a,b)=> a.start.localeCompare(b.start));
-      list.forEach(b=>{
-        const item=document.createElement('div'); item.className='booking';
-        const who=document.createElement('div'); who.innerHTML=`<strong>${b.name} — ${b.level}</strong><small>${b.start}–${b.end} · ${b.email}</small>`;
-        const right=document.createElement('div'); right.className='pill';
-        const st=b.status||'pending';
-        if(st==='pending'){
-          right.innerHTML='Pendiente · <span class="act" data-act="ok">✓</span> <span class="act" data-act="no">✗</span>';
-          right.querySelectorAll('.act').forEach(btn=>btn.addEventListener('click', ev=>{
-            const act=ev.target.getAttribute('data-act'); const data=read();
-            const i=data.findIndex(x=>x.id===b.id);
-            if(i>=0 && (data[i].status||'pending')==='pending'){
-              data[i].status=(act==='ok')?'ok':'no'; data[i].statusAt=new Date().toISOString(); save(data);
-              toast(act==='ok'?'Reserva confirmada (✓)':'Reserva rechazada (✗)'); renderDay(date); render();
-            }
-          }));
-        } else if(st==='ok'){ right.innerHTML='<span class="ok">✅ Confirmado</span>'; }
-        else { right.innerHTML='<span class="danger">❌ No disponible</span>'; }
-        item.appendChild(who); item.appendChild(right); bookingsBox.appendChild(item);
-      });
-    } else {
-      const empty=document.createElement('div'); empty.className='empty'; empty.textContent='Sin marcaciones en este día.'; bookingsBox.appendChild(empty);
+  // Enviar al profesor (no pasamos "to", el API usa SENDGRID_TO por defecto)
+  sendEmail({
+    subject: asunto,
+    data: {
+      name, level, email,
+      fecha: fechaLegible,
+      hora:  horaLegible,
+      tipo:  'reserva'
     }
-
-    if(isWeekend(date)){
-      $('#dayEmpty').style.display='block'; SLOT_STARTS.forEach(t=> slotsBox.appendChild(renderSlot(date,t,'booked',{weekend:true}))); return;
-    } else { $('#dayEmpty').style.display='none'; }
-
-    SLOT_STARTS.forEach(start=>{
-      const booked=list.some(b=>b.start===fmtHM(start)); const past=isPastDate(date)||isPastTime(date,start); const leadOk=hasLeadTime(date,start);
-      slotsBox.appendChild(renderSlot(date,start, booked||past||!leadOk?'booked':'available', {booked,past,leadOk}));
-    });
-    $('#dayEmpty').style.display = $$('.slot.available', slotsBox).length ? 'none':'block';
-  }
-  function renderSlot(date,startMins,mode,meta={}){
-    const slot=document.createElement('div'); slot.className='slot '+(mode==='available'?'available':'booked');
-    if(meta.past||meta.leadOk===false) slot.classList.add('disabled');
-    const endMins=startMins+DURATION; const hour=fmtHM(startMins), end=fmtHM(endMins);
-    const left=document.createElement('div'); left.textContent=`${hour} — ${end}`;
-    const right=document.createElement('div'); right.className='status'; right.textContent=(mode==='available')?'Disponible':(meta.past?'Pasado':(meta.leadOk===false?'≥48h requerido':'Reservado'));
-    slot.appendChild(left); slot.appendChild(right);
-    if(mode==='available'){ slot.addEventListener('click', ()=>{ chosenStart=startMins; $('#chosen').textContent=`${hour}–${end} · ${toISODate(date)}`; $('#btnSave').disabled=false; }); }
-    return slot;
-  }
-
-  form.addEventListener('submit', e=>{
-    e.preventDefault(); if(chosenStart===null||!currentDate) return;
-    const name=$('#iNombre').value.trim(), level=$('#iNivel').value.trim(), email=$('#iEmail').value.trim().toLowerCase();
-    if(!name||!level||!email) return toast('Completa todos los campos');
-    if(!isValidEmail(email)) return toast('Correo no válido');
-    saveProfile({name,level,email});
-
-    const dayISO=toISODate(currentDate), start=chosenStart, end=start+DURATION, data=read();
-    if(data.some(b=>b.date===dayISO && b.start===fmtHM(start))) return toast('Esa franja ya está reservada');
-    if(isWeekend(currentDate)) return toast('No se aceptan reservas en fines de semana');
-    if(isPastDate(currentDate)||isPastTime(currentDate,start)) return toast('No se puede reservar en el pasado');
-    if(!hasLeadTime(currentDate,start)) return toast('Debes reservar con ≥48 horas de anticipación');
-
-    const ownToday=data.filter(b=>b.email===email && b.date===dayISO).map(b=>b.start).sort();
-    if(ownToday.length>=2) return toast('Ya tienes 2 reservas consecutivas en este día.');
-    if(ownToday.length===1){ const only=ownToday[0]; const onlyStart=Number(only.slice(0,2))*60 + Number(only.slice(3)); if(!(start===onlyStart+90 || start===onlyStart-90)) return toast('Solo puedes añadir la franja consecutiva (±1:30) en este día.'); }
-
-    const id=`${dayISO}-${fmtHM(start)}-${email}`;
-    data.push({ id, date:dayISO, start:fmtHM(start), end:fmtHM(end), name, level, email, status:'pending', createdAt:new Date().toISOString() });
-    save(data); toast('Marcación guardada'); render(); renderDay(currentDate);
-    try{
-      const whenDT = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), Math.floor(start/60), start%60);
-      const fechaLegible = new Intl.DateTimeFormat('es-ES', { dateStyle:'full' }).format(whenDT);
-      const horaLegible = `${String(whenDT.getHours()).padStart(2,'0')}:${String(whenDT.getMinutes()).padStart(2,'0')}–${String(((start+75)/60|0)).toString().padStart(2,'0')}:${String((start+75)%60).toString().padStart(2,'0')}`;
-      const asunto = `Reserva de clase — ${fechaLegible} ${horaLegible}`;
-      // Aviso por correo (usa /api/send-email del proyecto)
-      sendEmail({
-        subject: asunto,
-        data: { name, level, email, fecha: fechaLegible, hora: horaLegible, dateISO: dayISO }
-      });
-    }catch(_e){}
-    chosenStart=null; $('#chosen').textContent='Ninguna'; $('#btnSave').disabled=true;
   });
 
-  function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+  toast('Marcación guardada');
+  render(); renderDay(currentDate);
 
-  $('#prevMonth').addEventListener('click', ()=>{ view.setMonth(view.getMonth()-1); render(); });
-  $('#nextMonth').addEventListener('click', ()=>{ view.setMonth(view.getMonth()+1); render(); });
-  setInterval(()=>{ updateTodayChip(); if(currentDate && sameDay(currentDate, now())) renderDay(currentDate); render(); }, 60000);
-  render();
-})();
+  chosenStart=null;
+  $('#chosen').textContent='Ninguna';
+  $('#btnSave').disabled=true;
+});
+
+// ... (sigue tu código)
 </script>
+
 
 <!-- Email helper (corregido) -->
 <script>

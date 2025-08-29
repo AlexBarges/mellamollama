@@ -13,8 +13,8 @@ async function readJsonBody(req) {
 }
 
 module.exports = async (req, res) => {
-  // === TEST RÁPIDO: visitar /api/send-email?test=1 envía un correo de prueba ===
-  if (req.method === 'GET' && /\btest=1\b/.test(req.url || '')) {
+// === TEST RÁPIDO: visitar /api/send-email (GET) envía un correo de prueba ===
+if (req.method === 'GET') {
     try {
       const to = process.env.SENDGRID_TO || 'alexbargesrj@gmail.com';
       const from = process.env.SENDGRID_FROM;

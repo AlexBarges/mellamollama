@@ -310,23 +310,38 @@
 
 <!-- Email helper injected per user spec -->
 <script>
-  async function sendEmail(payload) {
+async function sendEmail(payload) {
+  const to = "alexbargesrj@gmail.com"; // tu correo
   try {
-    const res = await fetch('/api/send-email', {
+    const r = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const out = await res.json().catch(() => null);
-    if (out && out.ok) alert('Email enviado ✅');
-    else alert('Error al enviar: ' + (out?.error || 'desconocido'));
-  } catch (e) { alert('Error: ' + e.message); }
-},
-        body: JSON.stringify({ message: mensaje, subject: asunto })
-      });
-      alert(await res.text());
-    } catch (e) { alert('Error: ' + e.message); }
+    // intenta leer respuesta; si no es 2xx o no trae ok:true, forzamos fallback
+    const txt = await r.text().catch(()=> '');
+    let ok = r.ok;
+    try { const j = JSON.parse(txt || '{}'); if (j.ok === false) ok = false; } catch {}
+    if (!ok) throw new Error(txt || 'Fallo API');
+    alert('Email enviado ✅');
+  } catch (e) {
+    // === FALLBACK: abrir el cliente de correo con todo prellenado ===
+    const d = payload?.data || {};
+    const subject = payload?.subject || 'Reserva';
+    const lineas = [
+      'Registro de clase',
+      d.name  ? `Alumno: ${d.name}` : '',
+      d.level ? `Nivel: ${d.level}` : '',
+      d.email ? `Correo: ${d.email}` : '',
+      d.fecha ? `Fecha: ${d.fecha}` : '',
+      d.hora  ? `Horario: ${d.hora}` : '',
+      d.dateISO ? `ISO: ${d.dateISO}` : ''
+    ].filter(Boolean);
+    const body = lineas.join('\n');
+    window.location.href =
+      `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
+}
 </script>
 </body>
 </html>

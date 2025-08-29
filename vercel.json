@@ -1,6 +1,7 @@
 {
   "version": 2,
   "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
     { "handle": "filesystem" },
     { "src": "^/$", "dest": "/site/index.html" },
     { "src": "^/citas7$", "dest": "/site/CITAS7.html" }

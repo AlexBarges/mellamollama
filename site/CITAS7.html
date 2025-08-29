@@ -54,7 +54,7 @@
   .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:18px; z-index:20}
   .modal{ background:#3a3b40; width:min(920px,96vw); max-height:90vh; overflow:auto; border-radius:12px; border:1px solid var(--border); box-shadow:var(--shadow) }
   .modal-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border) }
-  .modal-title{ font-weight:900 } .close-x{ width:32px; height:28px; border-radius:8px; background:#44454b; border:1px solid var(--border); color:var(--ink); display:grid; place-items:center; cursor:pointer }
+  .modal-title{ font-weight:900 } .close-x{ width:32px; height:28px; border-radius:8px; background:#44454b; border:1px solid var(--border); color:#e8e8ee; display:grid; place-items:center; cursor:pointer }
   .modal-body{ display:grid; grid-template-columns: 1.2fr .9fr; gap:14px; padding:14px }
   .slots{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px }
   .slot{ border:1px solid var(--border); background:#44454b; border-radius:10px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; font-weight:800 }
@@ -276,25 +276,11 @@
       const fechaLegible = new Intl.DateTimeFormat('es-ES', { dateStyle:'full' }).format(whenDT);
       const horaLegible = `${String(whenDT.getHours()).padStart(2,'0')}:${String(whenDT.getMinutes()).padStart(2,'0')}–${String(((start+75)/60|0)).toString().padStart(2,'0')}:${String((start+75)%60).toString().padStart(2,'0')}`;
       const asunto = `Reserva de clase — ${fechaLegible} ${horaLegible}`;
-      const mensaje = [
-        `Hola ${name},`,
-        ``,
-        `Tu marcación de clase fue registrada.`,
-        ``,
-        `Datos:`,
-        `• Alumno: ${name}`,
-        `• Nivel: ${level}`,
-        `• Correo: ${email}`,
-        `• Fecha: ${fechaLegible}`,
-        `• Horario: ${horaLegible} (duración 1:15, pausa 15')`,
-        `• Estado: PENDIENTE de confirmación del profesor (✓/✗)`,
-        ``,
-        `Si necesitas otra franja, recuerda que las reservas deben hacerse con al menos 48 horas de anticipación.`
-      ].join('\\n');
+      // Aviso por correo (usa /api/send-email del proyecto)
       sendEmail({
-  subject: asunto,
-  data: { name, level, email, fecha: fechaLegible, hora: horaLegible, dateISO: dayISO }
-});
+        subject: asunto,
+        data: { name, level, email, fecha: fechaLegible, hora: horaLegible, dateISO: dayISO }
+      });
     }catch(_e){}
     chosenStart=null; $('#chosen').textContent='Ninguna'; $('#btnSave').disabled=true;
   });
@@ -308,38 +294,23 @@
 })();
 </script>
 
-<!-- Email helper injected per user spec -->
+<!-- Email helper (corregido) -->
 <script>
 async function sendEmail(payload) {
-  const to = "alexbargesrj@gmail.com"; // tu correo
   try {
-    const r = await fetch('/api/send-email', {
+    const res = await fetch('/api/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    // intenta leer respuesta; si no es 2xx o no trae ok:true, forzamos fallback
-    const txt = await r.text().catch(()=> '');
-    let ok = r.ok;
-    try { const j = JSON.parse(txt || '{}'); if (j.ok === false) ok = false; } catch {}
-    if (!ok) throw new Error(txt || 'Fallo API');
-    alert('Email enviado ✅');
+    const out = await res.json().catch(() => null);
+    if (out && out.ok) {
+      console.log('Email enviado ✓');
+    } else {
+      console.warn('Error al enviar email:', out);
+    }
   } catch (e) {
-    // === FALLBACK: abrir el cliente de correo con todo prellenado ===
-    const d = payload?.data || {};
-    const subject = payload?.subject || 'Reserva';
-    const lineas = [
-      'Registro de clase',
-      d.name  ? `Alumno: ${d.name}` : '',
-      d.level ? `Nivel: ${d.level}` : '',
-      d.email ? `Correo: ${d.email}` : '',
-      d.fecha ? `Fecha: ${d.fecha}` : '',
-      d.hora  ? `Horario: ${d.hora}` : '',
-      d.dateISO ? `ISO: ${d.dateISO}` : ''
-    ].filter(Boolean);
-    const body = lineas.join('\n');
-    window.location.href =
-      `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    console.error('Fallo al enviar email:', e);
   }
 }
 </script>

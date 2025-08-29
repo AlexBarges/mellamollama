@@ -12,31 +12,38 @@
   <button onclick="abrirWa()">Abrir WhatsApp</button>
 
   <script>
-    const DEST_EMAIL = "alexbargesrj@gmail.com";
-    const DEST_WA = "5521983889456";
-    function getMsg(){ return document.getElementById('mensaje').value || ''; }
+  const DEST_EMAIL = "alexbargesrj@gmail.com";
+  const DEST_WA = "5521983889456";
+  function getMsg(){ return document.getElementById('mensaje').value || ''; }
 
-    async function sendEmail(){
-      try{
-        const res = await fetch('/api/send-email', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          - body: JSON.stringify({ message: getMsg(), subject:'Mensaje desde el formulario'})
-+ body: JSON.stringify({
-+   to: 'alexbargesrj@gmail.com',                 // ← tu email
-+   subject: 'Mensaje desde el formulario',
-+   message: getMsg()
-+ })
-
-    function abrirGmail(){
-      const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(DEST_EMAIL)}&su=Mensaje&body=${encodeURIComponent(getMsg())}`;
-      window.open(url, "_blank");
+  async function sendEmail(){
+    try{
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          to: 'alexbargesrj@gmail.com',   // destinatario
+          subject: 'Mensaje desde el formulario',
+          message: getMsg()
+        })
+      });
+      const txt = await res.text();
+      alert(res.ok ? 'Enviado ✅' : `Error: ${txt}`);
+    }catch(e){
+      alert('Error: ' + e.message);
     }
+  }
 
-    function abrirWa(){
-      const url = `https://wa.me/${DEST_WA}?text=${encodeURIComponent(getMsg())}`;
-      window.open(url, "_blank");
-    }
-  </script>
+  function abrirGmail(){
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(DEST_EMAIL)}&su=Mensaje&body=${encodeURIComponent(getMsg())}`;
+    window.open(url, "_blank");
+  }
+
+  function abrirWa(){
+    const url = `https://wa.me/${DEST_WA}?text=${encodeURIComponent(getMsg())}`;
+    window.open(url, "_blank");
+  }
+</script>
+
 </body>
 </html>

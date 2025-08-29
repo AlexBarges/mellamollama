@@ -12,10 +12,10 @@ document.getElementById('btn').onclick = async () => {
       method:'POST',
       headers:{'content-type':'application/json'},
       body: JSON.stringify({
-        subject:'Test CITAS7',
-        data:{ name:'Alumno Demo', level:'A1', email:'tu@correo.com',
-               fecha:'01/10/2025', hora:'10:00', dateISO:new Date().toISOString() }
-      })
+  to: "tu-correo@dominio.com",   // ← tu email
+  subject:'Test CITAS7',
+  data:{ /* ... lo que ya tienes ... */ }
+})
     });
     const txt = await r.text();
     out.textContent = `STATUS ${r.status} ${txt}`;

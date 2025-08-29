@@ -5,3 +5,8 @@
     { "src": "/site/(.*)", "dest": "/site/index.html" }
   ]
 }
+{
+  "rewrites": [
+    { "source": "/citas7", "destination": "/site/CITAS7.html" }
+  ]
+}

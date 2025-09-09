@@ -21,7 +21,7 @@
     header{grid-column:2;grid-row:1;padding:10px 14px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between;gap:14px;position:sticky;top:0;background:#000;z-index:5;white-space:nowrap}
     h1{margin:0;font-size:clamp(18px, 2.2vw, 28px);letter-spacing:.08em;text-transform:uppercase;transform-origin:left center;transform:scale(var(--hdr-scale))}
     .actions{display:flex;gap:10px;align-items:center;flex-wrap:nowrap;transform-origin:right center;transform:scale(var(--hdr-scale));}
-    .btn{padding:clamp(6px,0.6vw,10px) clamp(10px,1vw,14px);border-radius:12px;border:2px solid var(--accent);background:#0b0b0b;color:var(--fg);font-weight:800;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;transition:.15s ease;box-shadow:var(--shadow);font-size:clamp(10px,1.2vw,14px)}
+    .btn{padding:clamp(6px,0.6vw,10px) clamp(10px,1vw,14px);border-radius:12px;border:2px solid var(--accent);background:#0b0b0b;color: var(--fg);font-weight:800;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;transition:.15s ease;box-shadow:var(--shadow);font-size:clamp(10px,1.2vw,14px)}
     .btn:hover{transform:translateY(-1px)} .btn[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent),var(--shadow);background:#101010}
     .grid-wrap{grid-column:2;grid-row:2;padding:18px;overflow:hidden auto;scrollbar-width:none}
     .grid-wrap::-webkit-scrollbar{display:none}
@@ -49,10 +49,22 @@
     dialog input, dialog textarea{width:100%;padding:10px;margin:6px 0 12px;border-radius:10px;border:1px solid #333;background:#0f0f0f;color:#ddd}
     dialog .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     dialog .actions{display:flex;gap:10px;justify-content:flex-end}
-    .theme-FOGO{--accent:#f04444}.theme-ÁGUA{--accent:#2e7df6}.theme-VENTO{--accent:#f5d13d}.theme-LUZ{--accent:#f1f1f1;--fg:#f1f1f1}.theme-ESCURIDÃO{--accent:#8a8a8a}
-    .theme-LUZ .btn, .theme-LUZ .menu button{color:#111;background:#f1f1f1;border-color:#cfcfcf}
+
+    /* Temas (acentos) */
+    .theme-FOGO{--accent:#f04444}
+    .theme-ÁGUA{--accent:#2e7df6}
+    .theme-VENTO{--accent:#f5d13d}
+    .theme-LUZ{--accent:#f1f1f1;--fg:#f1f1f1}
+    .theme-ESCURIDÃO{--accent:#8a8a8a}
+
+    /* ✅ Forçar texto branco em todos os temas exceto LUZ */
+    .layout .btn, .layout .menu button { color:#fff !important; }
+    .theme-LUZ .btn, .theme-LUZ .menu button { color:#111 !important; background:#f1f1f1; border-color:#cfcfcf; }
+
+    /* Ajustes de LUZ */
     .theme-LUZ header, .theme-LUZ .menu, .theme-LUZ .side, .theme-LUZ .footer, .theme-LUZ body{background:#000;color:#fff}
     .theme-LUZ .cell{border-color:#cfcfcf}
+
     .dragging{cursor:grabbing}
     .muted{color:#9aa0a6;font-size:12px}
   </style>
@@ -83,7 +95,7 @@
           <dt>Notas</dt><dd id="m-notas">—</dd>
         </dl>
       </div>
-      <p class="muted">Arraste verticalmente em uma área sem células para rolar. Sempre 6 células por linha. Exportar/Importar permitem manter seus dados.</p>
+      <p class="muted">Arraste verticalmente em uma área sem células para rolar. Sempre 6 células por linha. Exportar/Importar mantêm seus dados.</p>
     </aside>
     <div class="footer">
       <span class="legend">Salvamento automático ativo. “Exportar” baixa JSON + HTML portátil.</span>
@@ -127,7 +139,7 @@
       { key:'ESCURIDÃO',   folder:'escuridao',  color:'rgba(0,0,0,0.80)', accent:'#8a8a8a' },
     ];
     var ORDER = ['ESCURIDÃO','VENTO','ÁGUA','FOGO','LUZ'];
-    var STORAGE_KEY = 'halls-of-heroes-v17-4';
+    var STORAGE_KEY = 'halls-of-heroes-v17-6';
     var INITIAL_ROWS = 3;
     var COLS = 6;
     var RAW = { user:'AlexBarges', repo:'mellamollama', branch:'main', root:'site/halls-images' };
@@ -169,6 +181,7 @@
     render(current);
     updateScale();
     new ResizeObserver(updateScale).observe(document.querySelector('.grid'));
+    fitHeaderOnLoad();
 
     // ====== Header numa linha (auto-escala) ======
     function fitHeader(){
@@ -183,8 +196,7 @@
         document.documentElement.style.setProperty('--hdr-scale', String(scale));
       }
     }
-    new ResizeObserver(fitHeader).observe(document.querySelector('header'));
-    window.addEventListener('load', fitHeader);
+    function fitHeaderOnLoad(){ new ResizeObserver(fitHeader).observe(document.querySelector('header')); window.addEventListener('load', fitHeader); }
 
     // ====== Drag-to-scroll vertical ======
     var dragging = false, startY = 0, startScroll = 0;
@@ -280,19 +292,28 @@
     document.addEventListener('visibilitychange', function(){ if(document.hidden && dirty) commit(false); });
     window.addEventListener('beforeunload', function(){ if(dirty) commit(false); });
 
+    // ====== Carregar estado ======
     function loadRawState(){ try{ var raw = localStorage.getItem(STORAGE_KEY); if(raw) return JSON.parse(raw); }catch(e){} return { pages:{} }; }
     function loadEmbeddedState(){
       try{
-        if(!embeddedTag) return null;
-        var txt = embeddedTag.textContent;
-        if(!txt) return null;
-        txt = txt.replace(/^\s+|\s+$/g,'');
+        var tag = document.getElementById('embedded-state');
+        if(!tag) return null;
+        var txt = (tag.textContent || '').trim();
         if(!txt) return null;
         var json = JSON.parse(txt);
+
+        // Usar APENAS se realmente há páginas
+        if(!json || !json.pages || Object.keys(json.pages).length === 0){
+          return null; // não sobrescreve localStorage quando vazio
+        }
+
         try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(json)); }catch(e){}
         return json;
-      }catch(e){ return null; }
+      }catch(e){
+        return null;
+      }
     }
+
     function migrate(s){
       for(var pk in (s.pages||{})){
         var p = s.pages[pk];
@@ -417,6 +438,57 @@
       mNome.textContent = info.nome || '—'; mPropriedade.textContent = info.propriedade || '—'; mClasse.textContent = info.classe || '—'; mNotas.textContent = info.notas || '—';
     }
 
+    // ====== Info dialog ======
+    function openInfoDialog(pageKey, index){
+      ensurePage(pageKey);
+      var page = state.pages[pageKey];
+      var data = page.cells[index] || {};
+      infoForm.nome.value = data.nome || '';
+      infoForm.classe.value = data.classe || '';
+      infoForm.propriedade.value = data.propriedade || '';
+      infoForm.notas.value = data.notas || '';
+      cellUrl.value = data.imgURL || '';
+      detailUrl.value = data.detailURL || '';
+
+      // preview inicial
+      if(data.detailURL || data.imgURL){
+        updateSidePanel({ img:data.detailURL||data.imgURL, nome:data.nome||'—', propriedade:data.propriedade||'—', classe:data.classe||'—', notas:data.notas||'—' });
+      }
+
+      infoDialog.showModal();
+
+      // handler único por abertura
+      var onSubmit = function(ev){
+        ev.preventDefault();
+        page.cells[index] = page.cells[index] || {};
+        var target = page.cells[index];
+        target.nome = infoForm.nome.value || '';
+        target.classe = infoForm.classe.value || '';
+        target.propriedade = infoForm.propriedade.value || '';
+        target.notas = infoForm.notas.value || '';
+
+        var imgIn = (cellUrl.value||'').trim();
+        var detIn = (detailUrl.value||'').trim();
+        if(imgIn){ target.imgURL = buildURL(imgIn, pageKey); }
+        if(detIn){ target.detailURL = buildURL(detIn, pageKey); }
+        if(!target.detailURL && target.imgURL) target.detailURL = target.imgURL;
+
+        autoExpandIfFilled(pageKey);
+
+        infoDialog.close();
+        markDirty(); render(pageKey); commit(true);
+      };
+
+      var onCancel = function(){ infoDialog.close(); };
+
+      // limpar handlers anteriores
+      infoDialog.removeEventListener('close', onCancel);
+      infoForm.removeEventListener('submit', onSubmit);
+      // adicionar handlers
+      infoForm.addEventListener('submit', onSubmit, { once:true });
+      infoDialog.addEventListener('close', onCancel, { once:true });
+    }
+
     // ====== Botões ======
     btnDelete.addEventListener('click', function(){
       deleteMode = !deleteMode;
@@ -426,7 +498,7 @@
       fitHeader();
     });
 
-    // SALVAR: só garante localStorage (sem exportar HTML)
+    // SALVAR: apenas localStorage
     btnSave.addEventListener('click', function(){
       dirty = true;
       commit(true);
@@ -435,13 +507,15 @@
     // ====== EXPORTAR: JSON + HTML portátil ======
     btnExport.addEventListener('click', function(){
       try{
-        // 1) Exporta JSON (abre a janela de "Salvar como..." que já funciona no seu navegador)
+        if (typeof commit === 'function') commit(false);
+
+        // 1) JSON
         var data = compactState(state);
         var jsonBlob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
         var jsonName = 'halls-of-heroes-backup-' + isoStamp() + '.json';
         triggerDownload(jsonBlob, jsonName);
 
-        // 2) Exporta HTML portátil (ligeiro atraso para reduzir bloqueios)
+        // 2) HTML portátil usando API interna
         setTimeout(function(){
           try{
             var fullHTML = buildSelfContainedHTML();
@@ -450,7 +524,6 @@
             triggerDownload(htmlBlob, htmlName);
             showToast('Exportado: JSON + HTML.');
           }catch(err2){
-            // Fallback: abrir em nova aba para Ctrl+S
             try{
               var w = window.open('', '_blank');
               if (w && !w.closed){
@@ -507,28 +580,37 @@
       app.style.setProperty('--cell-font', cellFont + 'px');
       app.style.setProperty('--dot-size',  dotSize  + 'px');
     }
+
+    // ====== 🔒 API interna para exportar com acesso ao 'state' real ======
+    window.__HOH_EXPORT__ = function () {
+      try {
+        var embedded = document.getElementById('embedded-state');
+        var compact = compactState(state); // usa o estado correto dentro do IIFE
+        var safe = JSON.stringify(compact).replace(/<\/script>/gi, '<\\/script>');
+        embedded.textContent = safe;
+
+        var docType = '<!DOCTYPE html>';
+        var htmlString = document.documentElement.outerHTML;
+        return docType + '\n' + htmlString;
+      } catch (e) {
+        return '<!DOCTYPE html>\n' + document.documentElement.outerHTML; // fallback
+      }
+    };
   })();
   </script>
 
   <!-- ===== Helpers compartilhados ===== -->
   <script>
-    // Serializa o HTML atual com o <script id="embedded-state"> preenchido com o estado compacto.
-    function buildSelfContainedHTML(){
-      var embedded = document.getElementById('embedded-state');
-      // Compacta o estado atual (ou vazio se algo falhar)
-      var compact = (typeof compactState === 'function' && typeof state !== 'undefined')
-        ? compactState(state)
-        : { pages:{} };
-      // Evita fechar a tag script
-      var safe = JSON.stringify(compact).replace(/<\/script>/gi,'<\\/script>');
-      embedded.textContent = safe;
-      // Devolve documento completo
-      var docType = '<!DOCTYPE html>';
-      var htmlString = document.documentElement.outerHTML;
-      return docType + '\n' + htmlString;
+    // Wrapper público: usa a API interna se existir
+    function buildSelfContainedHTML() {
+      if (typeof window.__HOH_EXPORT__ === 'function') {
+        return window.__HOH_EXPORT__();
+      }
+      var tag = document.getElementById('embedded-state');
+      if (tag && !tag.textContent.trim()) tag.textContent = '{"pages":{}}';
+      return '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
     }
 
-    // Download compatível
     function triggerDownload(blob, filename){
       if (navigator.msSaveOrOpenBlob) { navigator.msSaveOrOpenBlob(blob, filename); return; }
       var url = URL.createObjectURL(blob);
@@ -545,7 +627,6 @@
     }
     function isoStamp(){ var d = new Date(); return d.toISOString().replace(/[:.]/g,'-'); }
 
-    // Pequeno toast reutilizável (caso precise fora do escopo IIFE)
     function showToast(msg){
       var toast = document.getElementById('toast');
       if(!toast) return;

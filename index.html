@@ -57,13 +57,27 @@
     .theme-LUZ{--accent:#f1f1f1;--fg:#f1f1f1}
     .theme-ESCURIDÃO{--accent:#8a8a8a}
 
-    /* ✅ Forçar texto branco em todos os temas exceto LUZ */
+    /* ✅ Texto de botões: branco em todos, preto só em LUZ */
     .layout .btn, .layout .menu button { color:#fff !important; }
     .theme-LUZ .btn, .theme-LUZ .menu button { color:#111 !important; background:#f1f1f1; border-color:#cfcfcf; }
 
     /* Ajustes de LUZ */
     .theme-LUZ header, .theme-LUZ .menu, .theme-LUZ .side, .theme-LUZ .footer, .theme-LUZ body{background:#000;color:#fff}
     .theme-LUZ .cell{border-color:#cfcfcf}
+
+    /* Ocultar qualquer <a download> renderizado */
+    a[download]{
+      position: fixed !important;
+      left: -10000px !important;
+      top: -10000px !important;
+      width: 1px !important;
+      height: 1px !important;
+      opacity: 0 !important;
+      font-size: 0 !important;
+      color: transparent !important;
+      pointer-events: none !important;
+      text-indent: -9999px !important;
+    }
 
     .dragging{cursor:grabbing}
     .muted{color:#9aa0a6;font-size:12px}
@@ -103,6 +117,9 @@
     <div class="toast" id="toast">Salvo.</div>
   </div>
 
+  <!-- Contêiner invisível para descargas -->
+  <div id="download-bin" aria-hidden="true" style="position:fixed;left:-200vw;top:-200vh;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;z-index:-1;contain:strict"></div>
+
   <!-- Estado embutido: será preenchido ao exportar -->
   <script id="embedded-state" type="application/json"></script>
 
@@ -139,7 +156,7 @@
       { key:'ESCURIDÃO',   folder:'escuridao',  color:'rgba(0,0,0,0.80)', accent:'#8a8a8a' },
     ];
     var ORDER = ['ESCURIDÃO','VENTO','ÁGUA','FOGO','LUZ'];
-    var STORAGE_KEY = 'halls-of-heroes-v17-6';
+    var STORAGE_KEY = 'halls-of-heroes-v17-8';
     var INITIAL_ROWS = 3;
     var COLS = 6;
     var RAW = { user:'AlexBarges', repo:'mellamollama', branch:'main', root:'site/halls-images' };
@@ -301,17 +318,10 @@
         var txt = (tag.textContent || '').trim();
         if(!txt) return null;
         var json = JSON.parse(txt);
-
-        // Usar APENAS se realmente há páginas
-        if(!json || !json.pages || Object.keys(json.pages).length === 0){
-          return null; // não sobrescreve localStorage quando vazio
-        }
-
+        if(!json || !json.pages || Object.keys(json.pages).length === 0){ return null; }
         try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(json)); }catch(e){}
         return json;
-      }catch(e){
-        return null;
-      }
+      }catch(e){ return null; }
     }
 
     function migrate(s){
@@ -412,7 +422,6 @@
       if(!page.cells[index].detailURL) page.cells[index].detailURL = url;
 
       autoExpandIfFilled(pageKey);
-
       markDirty(); render(pageKey); commit(true);
     }
 
@@ -450,21 +459,19 @@
       cellUrl.value = data.imgURL || '';
       detailUrl.value = data.detailURL || '';
 
-      // preview inicial
       if(data.detailURL || data.imgURL){
         updateSidePanel({ img:data.detailURL||data.imgURL, nome:data.nome||'—', propriedade:data.propriedade||'—', classe:data.classe||'—', notas:data.notas||'—' });
       }
 
       infoDialog.showModal();
 
-      // handler único por abertura
       var onSubmit = function(ev){
         ev.preventDefault();
         page.cells[index] = page.cells[index] || {};
         var target = page.cells[index];
         target.nome = infoForm.nome.value || '';
         target.classe = infoForm.classe.value || '';
-        target.propriedade = infoForm.propriedade.value || '';
+        target.propriedade = infoForm.propriedade || '';
         target.notas = infoForm.notas.value || '';
 
         var imgIn = (cellUrl.value||'').trim();
@@ -474,17 +481,13 @@
         if(!target.detailURL && target.imgURL) target.detailURL = target.imgURL;
 
         autoExpandIfFilled(pageKey);
-
         infoDialog.close();
         markDirty(); render(pageKey); commit(true);
       };
 
       var onCancel = function(){ infoDialog.close(); };
-
-      // limpar handlers anteriores
       infoDialog.removeEventListener('close', onCancel);
       infoForm.removeEventListener('submit', onSubmit);
-      // adicionar handlers
       infoForm.addEventListener('submit', onSubmit, { once:true });
       infoDialog.addEventListener('close', onCancel, { once:true });
     }
@@ -585,15 +588,14 @@
     window.__HOH_EXPORT__ = function () {
       try {
         var embedded = document.getElementById('embedded-state');
-        var compact = compactState(state); // usa o estado correto dentro do IIFE
+        var compact = compactState(state);
         var safe = JSON.stringify(compact).replace(/<\/script>/gi, '<\\/script>');
         embedded.textContent = safe;
-
         var docType = '<!DOCTYPE html>';
         var htmlString = document.documentElement.outerHTML;
         return docType + '\n' + htmlString;
       } catch (e) {
-        return '<!DOCTYPE html>\n' + document.documentElement.outerHTML; // fallback
+        return '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
       }
     };
   })();
@@ -601,7 +603,6 @@
 
   <!-- ===== Helpers compartilhados ===== -->
   <script>
-    // Wrapper público: usa a API interna se existir
     function buildSelfContainedHTML() {
       if (typeof window.__HOH_EXPORT__ === 'function') {
         return window.__HOH_EXPORT__();
@@ -611,22 +612,32 @@
       return '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
     }
 
+    // Descarga invisível (link dentro do “lixo” fora da tela, sem texto)
     function triggerDownload(blob, filename){
       if (navigator.msSaveOrOpenBlob) { navigator.msSaveOrOpenBlob(blob, filename); return; }
-      var url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
       try{
-        var a = document.createElement('a');
+        const bin = document.getElementById('download-bin') || document.body;
+        const a = document.createElement('a');
         a.href = url;
         a.download = filename;
-        document.body.appendChild(a);
+        a.rel = 'noopener';
+        a.tabIndex = -1;
+        a.setAttribute('aria-hidden','true');
+        a.textContent = '';              // sem texto
+        a.innerHTML  = '';               // sem HTML
+        a.style.display = 'none';        // escondido
+
+        bin.appendChild(a);
+        a.addEventListener('click', e => e.stopPropagation(), true);
         a.click();
-        document.body.removeChild(a);
+        bin.removeChild(a);
       }finally{
-        setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
       }
     }
-    function isoStamp(){ var d = new Date(); return d.toISOString().replace(/[:.]/g,'-'); }
 
+    function isoStamp(){ var d = new Date(); return d.toISOString().replace(/[:.]/g,'-'); }
     function showToast(msg){
       var toast = document.getElementById('toast');
       if(!toast) return;

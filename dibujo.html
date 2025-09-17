@@ -1,417 +1,328 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Imagem & Ação — V7 (start local-first, palavra e desenho liberados)</title>
-  <style>
-    :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
-    header { position: sticky; top: 0; background: white; box-shadow: var(--shadow); padding: 14px 18px; z-index: 10; }
-    header h1 { font-size: 18px; margin: 0 0 6px; }
-    header .row { display: grid; grid-template-columns: 1fr auto; gap: var(--gap); align-items: center; }
-    .pill { font-size: 12px; background: #111; color: #fff; padding: 4px 10px; border-radius: 999px; }
-    main { max-width: 1100px; margin: 22px auto; padding: 0 16px; display: grid; gap: var(--gap); }
-    .grid { display: grid; grid-template-columns: 300px 1fr 320px; gap: var(--gap); align-items: start; }
-    .card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
-    label { display: grid; gap: 6px; font-size: 14px; }
-    input, button, select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; }
-    button { cursor: pointer; border: 0; background: #111; color: #fff; }
-    button:disabled { opacity: .5; cursor: not-allowed; }
-    .controls { display: grid; gap: var(--gap); }
-    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
-    #canvasWrap { position: relative; border: 1px solid #eee; border-radius: var(--radius); overflow: hidden; background: #fff; }
-    canvas { display: block; width: 100%; height: 540px; background: #fff; touch-action: none; }
-    .info { font-size: 12px; color: #555; }
-    #players { font-size: 14px; display: grid; gap: 6px; }
-    #chat { height: 320px; overflow: auto; border: 1px solid #eee; border-radius: var(--radius); padding: 10px; background: #fff; }
-    .msg { margin: 0 0 10px; }
-    .msg .meta { font-size: 12px; color: #666; }
-    .you { background: #eef7ff; padding: 6px 8px; border-radius: 8px; }
-    .word { font-weight: 700; letter-spacing: .5px; }
-    .hint { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 2px; }
-    .sep { height: 1px; background: #eee; margin: 10px 0; }
-    .timer { font-weight: 700; }
-    @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } canvas { height: 420px; } }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Imagem & Ação — V8 (start imediato e robusto)</title>
+<style>
+  :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f7f7f8;color:#111}
+  header{position:sticky;top:0;background:#fff;box-shadow:var(--shadow);padding:14px 18px;z-index:10}
+  header h1{font-size:18px;margin:0 0 6px}
+  header .row{display:grid;grid-template-columns:1fr auto;gap:var(--gap);align-items:center}
+  .pill{font-size:12px;background:#111;color:#fff;padding:4px 10px;border-radius:999px}
+  main{max-width:1100px;margin:22px auto;padding:0 16px;display:grid;gap:var(--gap)}
+  .grid{display:grid;grid-template-columns:300px 1fr 320px;gap:var(--gap);align-items:start}
+  .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+  label{display:grid;gap:6px;font-size:14px}
+  input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid #ddd}
+  button{cursor:pointer;border:0;background:#111;color:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .controls{display:grid;gap:var(--gap)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
+  #canvasWrap{border:1px solid #eee;border-radius:var(--radius);overflow:hidden;background:#fff}
+  canvas{display:block;width:100%;height:540px;background:#fff;touch-action:none}
+  .info{font-size:12px;color:#555}
+  #players{font-size:14px;display:grid;gap:6px}
+  #chat{height:320px;overflow:auto;border:1px solid #eee;border-radius:var(--radius);padding:10px;background:#fff}
+  .msg{margin:0 0 10px}
+  .msg .meta{font-size:12px;color:#666}
+  .word{font-weight:700;letter-spacing:.5px}
+  .hint{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:2px}
+  .sep{height:1px;background:#eee;margin:10px 0}
+  .timer{font-weight:700}
+  @media (max-width:1024px){.grid{grid-template-columns:1fr} canvas{height:420px}}
+</style>
 </head>
 <body>
-  <header>
-    <div class="row">
-      <div>
-        <h1>Imagem & Ação — V7</h1>
-        <div class="info">“Iniciar jogo” deixa quem clicou desenhar na hora. Palavra aparece pro desenhista. Ao encerrar, qualquer um pode iniciar outra.</div>
+<header>
+  <div class="row">
+    <div>
+      <h1>Imagem & Ação — V8</h1>
+      <div class="info">“Iniciar jogo” torna imediato quem clicou o desenhista. Ao encerrar, qualquer um pode iniciar outra.</div>
+    </div>
+    <div class="pill" id="status">desconectado</div>
+  </div>
+</header>
+
+<main>
+  <div class="grid">
+    <section class="card controls">
+      <div class="row2">
+        <label><div>Apelido</div><input id="nick" placeholder="ex.: Alex"></label>
+        <label><div>Sala</div><input id="room" placeholder="ex.: geral"></label>
       </div>
-      <div class="pill" id="status">desconectado</div>
-    </div>
-  </header>
+      <div class="row2">
+        <button id="connect">Conectar</button>
+        <button id="leave" disabled>Sair</button>
+      </div>
+      <div class="sep"></div>
+      <div class="row2">
+        <button id="startGame" disabled>Iniciar jogo</button>
+        <button id="endRound" disabled>Terminar rodada</button>
+      </div>
+      <div class="row2">
+        <button id="clear" disabled>Limpar desenho</button>
+      </div>
+      <div class="sep"></div>
+      <div>
+        <div class="info"><strong>Palavra (só desenhista):</strong> <span id="word" class="word">—</span></div>
+        <div class="info"><strong>Dica p/ todos:</strong> <span id="hint" class="hint">—</span></div>
+        <div class="info"><strong>Desenhista atual:</strong> <span id="drawerName">—</span></div>
+        <div class="info"><strong>Status:</strong> <span id="roundStatus">—</span></div>
+        <div class="info"><strong>Tempo restante:</strong> <span id="timer" class="timer">—</span></div>
+      </div>
+      <div class="sep"></div>
+      <div><div class="info"><strong>Espessura:</strong></div><input id="size" type="range" min="2" max="18" value="6"></div>
+      <div><div class="info"><strong>Cor:</strong></div><input id="color" type="color" value="#111111"></div>
+    </section>
 
-  <main>
-    <div class="grid">
-      <!-- Coluna 1 -->
-      <section class="card controls">
-        <div class="row2">
-          <label><div>Apelido</div><input id="nick" placeholder="ex.: Alex" /></label>
-          <label><div>Sala</div><input id="room" placeholder="ex.: geral" /></label>
-        </div>
+    <section class="card" id="canvasWrap"><canvas id="c"></canvas></section>
 
-        <div class="row2">
-          <button id="connect" type="button">Conectar</button>
-          <button id="leave" type="button" disabled>Sair</button>
-        </div>
-
+    <section class="card">
+      <div style="display:grid;gap:10px;">
+        <div><strong>Jogadores</strong></div>
+        <div id="players"></div>
         <div class="sep"></div>
+        <div><strong>Chat / Palpites</strong></div>
+        <div id="chat" aria-live="polite" aria-busy="true"></div>
+        <form id="chatForm" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:6px;">
+          <input id="chatInput" placeholder="Digite seu palpite…" autocomplete="off">
+          <button id="send" type="submit" disabled>Enviar</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</main>
 
-        <div class="row2">
-          <button id="startGame" type="button" disabled>Iniciar jogo</button>
-          <button id="endRound" type="button" disabled>Terminar rodada</button>
-        </div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* ---------- Firebase ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyA9FBaZDDJ_fOOWW4JNxoR_IbHCTG9CgqE",
+  authDomain: "chatenvivo-6b518.firebaseapp.com",
+  projectId: "chatenvivo-6b518",
+  storageBucket: "chatenvivo-6b518.firebasestorage.app",
+  messagingSenderId: "351680385901",
+  appId: "1:351680385901:web:8105134053b010cd69c064",
+  measurementId: "G-HF86GVYTVC"
+};
+let app, db;
+try { app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); document.getElementById("status").textContent="SDK carregado"; }
+catch(e){ document.getElementById("status").textContent="erro na config"; console.error(e); }
 
-        <div class="row2">
-          <button id="clear" type="button" disabled>Limpar desenho</button>
-        </div>
+/* ---------- Elements & State ---------- */
+const $status = document.getElementById("status");
+const $nick = document.getElementById("nick");
+const $room = document.getElementById("room");
+const $connect = document.getElementById("connect");
+const $leave = document.getElementById("leave");
+const $startGame = document.getElementById("startGame");
+const $endRound = document.getElementById("endRound");
+const $clear = document.getElementById("clear");
+const $word = document.getElementById("word");
+const $hint = document.getElementById("hint");
+const $drawerName = document.getElementById("drawerName");
+const $roundStatus = document.getElementById("roundStatus");
+const $timer = document.getElementById("timer");
+const $players = document.getElementById("players");
 
-        <div class="sep"></div>
+const $c = document.getElementById("c");
+const ctx = $c.getContext("2d");
+const $size = document.getElementById("size");
+const $color = document.getElementById("color");
 
-        <div>
-          <div class="info"><strong>Palavra (só desenhista):</strong> <span id="word" class="word">—</span></div>
-          <div class="info"><strong>Dica p/ todos:</strong> <span id="hint" class="hint">—</span></div>
-          <div class="info"><strong>Desenhista atual:</strong> <span id="drawerName">—</span></div>
-          <div class="info"><strong>Status:</strong> <span id="roundStatus">—</span></div>
-          <div class="info"><strong>Tempo restante:</strong> <span id="timer" class="timer">—</span></div>
-        </div>
+const $chat = document.getElementById("chat");
+const $chatForm = document.getElementById("chatForm");
+const $chatInput = document.getElementById("chatInput");
+const $send = document.getElementById("send");
 
-        <div class="sep"></div>
+let roomId="", nick="", isDrawer=false;
+let unsubRoom=null, unsubState=null, unsubGuesses=null, unsubPlayers=null;
+let heartbeatInt=null, countdownInt=null;
+let gameStatus="—", playersList=[];
 
-        <div><div class="info"><strong>Espessura:</strong></div><input id="size" type="range" min="2" max="18" value="6" /></div>
-        <div><div class="info"><strong>Cor:</strong></div><input id="color" type="color" value="#111111" /></div>
-      </section>
+const WORDS=["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
+const pickWord = ()=> WORDS[Math.floor(Math.random()*WORDS.length)];
+const makeHint = w => w.replace(/[a-záéíóúãõâêîôûç]/gi," _ ");
 
-      <!-- Coluna 2 -->
-      <section class="card" id="canvasWrap"><canvas id="c"></canvas></section>
+/* ---------- Canvas size ---------- */
+function resizeCanvas(){ const r=$c.getBoundingClientRect(); $c.width=Math.floor(r.width); $c.height=Math.floor(r.height); }
+window.addEventListener("resize",resizeCanvas); setTimeout(resizeCanvas,0);
 
-      <!-- Coluna 3 -->
-      <section class="card">
-        <div style="display:grid; gap:10px;">
-          <div><strong>Jogadores</strong></div>
-          <div id="players"></div>
-          <div class="sep"></div>
-          <div><strong>Chat / Palpites</strong></div>
-          <div id="chat" aria-live="polite" aria-busy="true"></div>
-          <form id="chatForm" style="display:grid; grid-template-columns: 1fr auto; gap: 10px; margin-top:6px;">
-            <input id="chatInput" placeholder="Digite seu palpite…" autocomplete="off" />
-            <button id="send" type="submit" disabled>Enviar</button>
-          </form>
-        </div>
-      </section>
-    </div>
-  </main>
+/* ---------- Connect ---------- */
+$connect.addEventListener("click", async ()=>{
+  nick=($nick.value||"Anon").trim();
+  roomId=($room.value||"geral").trim().toLowerCase();
+  if(!db) return alert("Firebase não configurado."); if(!nick) return alert("Escolha um apelido.");
 
-  <!-- Firebase SDKs (compat) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  $connect.disabled=true; $leave.disabled=false; $send.disabled=false; $startGame.disabled=false;
+  $status.textContent="conectado";
 
-  <script>
-    // ===== CONFIG FIREBASE =====
-    const firebaseConfig = {
-      apiKey: "AIzaSyA9FBaZDDJ_fOOWW4JNxoR_IbHCTG9CgqE",
-      authDomain: "chatenvivo-6b518.firebaseapp.com",
-      projectId: "chatenvivo-6b518",
-      storageBucket: "chatenvivo-6b518.firebasestorage.app",
-      messagingSenderId: "351680385901",
-      appId: "1:351680385901:web:8105134053b010cd69c064",
-      measurementId: "G-HF86GVYTVC"
-    };
+  const playerRef = db.collection("salas").doc(roomId).collection("players").doc(nick);
+  await playerRef.set({nick,online:true,joinedAt:firebase.firestore.FieldValue.serverTimestamp(),lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+  heartbeatInt=setInterval(()=>playerRef.set({online:true,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}),5000);
+  window.addEventListener("beforeunload",()=>{try{playerRef.set({online:false,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch{};});
 
-    let app, db;
-    try { app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); document.getElementById("status").textContent = "SDK carregado"; }
-    catch(e){ document.getElementById("status").textContent = "erro na config"; console.error(e); }
+  listenRoom(); listenPlayers(); listenState(); listenGuesses();
+});
 
-    // ===== ELEMENTOS/ESTADO =====
-    const $status = document.getElementById("status");
-    const $nick = document.getElementById("nick");
-    const $room = document.getElementById("room");
-    const $connect = document.getElementById("connect");
-    const $leave = document.getElementById("leave");
-    const $startGame = document.getElementById("startGame");
-    const $endRound = document.getElementById("endRound");
-    const $clear = document.getElementById("clear");
-    const $word = document.getElementById("word");
-    const $hint = document.getElementById("hint");
-    const $drawerName = document.getElementById("drawerName");
-    const $roundStatus = document.getElementById("roundStatus");
-    const $timer = document.getElementById("timer");
-    const $players = document.getElementById("players");
+$leave.addEventListener("click",()=>{
+  [unsubRoom,unsubState,unsubGuesses,unsubPlayers].forEach(fn=>fn&&fn());
+  if(heartbeatInt){clearInterval(heartbeatInt);heartbeatInt=null}
+  if(countdownInt){clearInterval(countdownInt);countdownInt=null}
+  $connect.disabled=false; $leave.disabled=true; $send.disabled=true; $startGame.disabled=true; $endRound.disabled=true; $clear.disabled=true;
+  $status.textContent="desconectado"; isDrawer=false; gameStatus="—";
+  $word.textContent=$hint.textContent=$drawerName.textContent=$roundStatus.textContent=$timer.textContent="—";
+  ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML=""; $chat.innerHTML="";
+});
 
-    const $c = document.getElementById("c");
-    const ctx = $c.getContext("2d");
-    const $size = document.getElementById("size");
-    const $color = document.getElementById("color");
+/* ---------- START: imediato no cliente + gravação ---------- */
+async function startNow() {
+  if(!roomId||!nick) return;
 
-    const $chat = document.getElementById("chat");
-    const $chatForm = document.getElementById("chatForm");
-    const $chatInput = document.getElementById("chatInput");
-    const $send = document.getElementById("send");
+  // 1) Atualiza UI local (IMEDIATO)
+  const w = pickWord(); const h = makeHint(w);
+  isDrawer=true; gameStatus="jogando";
+  $drawerName.textContent=nick; $roundStatus.textContent="jogando";
+  $word.textContent=w; $hint.textContent=h;
+  $clear.disabled=false; $endRound.disabled=true; // libera clear; end habilita após confirmação do servidor
 
-    let roomId = "", nick = "", isDrawer = false;
-    let unsubRoom = null, unsubState = null, unsubGuesses = null, unsubPlayers = null;
-    let heartbeatInt = null, countdownInt = null;
-    let playersList = []; // apenas ativos
-    let gameStatus = "—";
+  if(countdownInt){clearInterval(countdownInt)} const localDeadline=Date.now()+120000;
+  const t=()=>{const left=Math.max(0,localDeadline-Date.now()); const mm=String(Math.floor(left/60000)).padStart(2,"0"); const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0"); $timer.textContent=`${mm}:${ss}`}; t(); countdownInt=setInterval(t,300);
 
-    const WORDS = ["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
+  // limpa canvas local
+  ctx.clearRect(0,0,$c.width,$c.height);
 
-    function resizeCanvas(){ const r=$c.getBoundingClientRect(); $c.width = Math.floor(r.width); $c.height = Math.floor(r.height); }
-    window.addEventListener("resize", resizeCanvas); setTimeout(resizeCanvas, 0);
+  // 2) Persiste no Firestore (sem checar status; a última escrita prevalece)
+  try{
+    const roomRef = db.collection("salas").doc(roomId);
+    const stateRef = roomRef.collection("sync").doc("state");
+    await stateRef.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp(),lastSeg:null},{merge:true});
+    const snap = await roomRef.get();
+    const round = (snap.exists && snap.data().round) ? (snap.data().round+1) : 1;
+    await roomRef.set({
+      currentDrawer:nick,status:"jogando",word:w,hint:h,winner:null,round,
+      startAt:firebase.firestore.FieldValue.serverTimestamp(),durationSec:120
+    },{merge:true});
+    // confirmado pelo servidor -> habilita terminar
+    $endRound.disabled=false;
+  }catch(e){
+    console.error(e);
+    // se falhar, reverte só o necessário
+    isDrawer=false; gameStatus="—";
+    $drawerName.textContent="—"; $roundStatus.textContent="—"; $word.textContent="—"; $hint.textContent="—"; $timer.textContent="—";
+    $clear.disabled=true; $endRound.disabled=true; if(countdownInt){clearInterval(countdownInt);countdownInt=null}
+    alert("Não foi possível iniciar o jogo. Verifique as regras do Firestore.");
+  }
+}
+$startGame.addEventListener("click", startNow);
 
-    // ========= CONECTAR =========
-    $connect.addEventListener("click", async () => {
-      nick = ($nick.value || "Anon").trim();
-      roomId = ($room.value || "geral").trim().toLowerCase();
-      if (!db) return alert("Firebase não configurado.");
-      if (!nick) return alert("Escolha um apelido.");
+/* ---------- Terminar rodada ---------- */
+$endRound.addEventListener("click", async ()=>{
+  if(!isDrawer || gameStatus!=="jogando") return;
+  await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true});
+});
 
-      $connect.disabled = true; $leave.disabled = false; $send.disabled = false;
-      $startGame.disabled = false; // SEMPRE habilitado após conectar
-      $status.textContent = "conectado";
+/* ---------- Sala / Timer global ---------- */
+function listenRoom(){
+  if(unsubRoom)unsubRoom();
+  const roomRef=db.collection("salas").doc(roomId);
+  unsubRoom=roomRef.onSnapshot(doc=>{
+    const data=doc.data()||{};
+    gameStatus=data.status||"—";
+    const drawer=data.currentDrawer||"—";
+    isDrawer=(drawer===nick);
 
-      const playerRef = db.collection("salas").doc(roomId).collection("players").doc(nick);
-      await playerRef.set({ nick, online: true, joinedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    $drawerName.textContent=drawer; $roundStatus.textContent=gameStatus;
 
-      // Heartbeat de presença (5s)
-      heartbeatInt = setInterval(() => { playerRef.set({ online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); }, 5000);
-      window.addEventListener("beforeunload", () => { try { playerRef.set({ online:false, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(_) {} });
-      document.addEventListener("visibilitychange", () => { try { playerRef.set({ online: !document.hidden, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(_) {} });
-
-      listenRoom();    // estado da rodada
-      listenPlayers(); // presença
-      listenState();   // espelho do desenho
-      listenGuesses(); // chat
-    });
-
-    $leave.addEventListener("click", () => {
-      [unsubRoom, unsubState, unsubGuesses, unsubPlayers].forEach(fn => fn && fn());
-      if (heartbeatInt) { clearInterval(heartbeatInt); heartbeatInt = null; }
-      if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
-      $connect.disabled = false; $leave.disabled = true; $send.disabled = true;
-      $startGame.disabled = true; $endRound.disabled = true; $clear.disabled = true;
-      $status.textContent = "desconectado"; isDrawer = false; gameStatus = "—";
-      $word.textContent = "—"; $hint.textContent = "—"; $drawerName.textContent = "—"; $roundStatus.textContent = "—"; $timer.textContent = "—";
-      ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML = ""; $chat.innerHTML = "";
-    });
-
-    // ========= INICIAR JOGO (local-first, sem alerta) =========
-    function pickWord(){ return WORDS[Math.floor(Math.random() * WORDS.length)]; }
-    function makeHint(word){ return word.replace(/[a-záéíóúãõâêîôûç]/gi, " _ "); }
-
-    async function startGameLocalFirst() {
-      // Se já estiver jogando, não faz nada (silencioso)
-      if (gameStatus === "jogando") return;
-
-      // 1) Atualiza UI local imediatamente
-      const localWord = pickWord();
-      const localHint = makeHint(localWord);
-      isDrawer = true;
-      gameStatus = "jogando";
-      $drawerName.textContent = nick;
-      $roundStatus.textContent = "jogando";
-      $word.textContent = localWord;      // só você vê
-      $hint.textContent = localHint;      // todos verão via snapshot logo depois
-      $clear.disabled = true;             // libera após Firestore confirmar (uma batidinha de segurança)
-      $endRound.disabled = true;
-
-      // Timer local imediato (será re-sincronizado pelo snapshot depois)
-      if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
-      const localDeadline = Date.now() + 120000;
-      const tickLocal = () => {
-        const left = Math.max(0, localDeadline - Date.now());
-        const mm = String(Math.floor(left/60000)).padStart(2,"0");
-        const ss = String(Math.floor((left%60000)/1000)).padStart(2,"0");
-        $timer.textContent = mm+":"+ss;
-      };
-      tickLocal(); countdownInt = setInterval(tickLocal, 300);
-
-      // 2) Persiste no Firestore
-      try {
-        const roomRef = db.collection("salas").doc(roomId);
-        const stateRef = roomRef.collection("sync").doc("state");
-        await stateRef.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeg: null }, { merge: true });
-
-        const snap = await roomRef.get();
-        const round = (snap.exists && snap.data().round) ? (snap.data().round + 1) : 1;
-
-        await roomRef.set({
-          currentDrawer: nick,
-          status: "jogando",
-          word: localWord,
-          hint: localHint,
-          winner: null,
-          round,
-          startAt: firebase.firestore.FieldValue.serverTimestamp(),
-          durationSec: 120
-        }, { merge: true });
-
-        // Habilita ações do desenhista
-        $clear.disabled = false;
-        $endRound.disabled = false;
-
-      } catch (err) {
-        // Reverte UI caso falhe
-        console.error(err);
-        isDrawer = false;
-        gameStatus = "—";
-        $drawerName.textContent = "—";
-        $roundStatus.textContent = "—";
-        $word.textContent = "—";
-        $hint.textContent = "—";
-        $timer.textContent = "—";
-        $clear.disabled = true;
-        $endRound.disabled = true;
-        if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
-        alert("Não foi possível iniciar o jogo (verifique as regras do Firestore).");
+    if(gameStatus==="jogando"){
+      $word.textContent=isDrawer?(data.word||"—"):"🔒 (secreto)";
+      $hint.textContent=data.hint||"—";
+      $clear.disabled=isDrawer; $endRound.disabled=!isDrawer;
+      // timer do servidor
+      if(countdownInt){clearInterval(countdownInt);countdownInt=null}
+      if(data.startAt&&data.startAt.toMillis){
+        const startMs=data.startAt.toMillis(); const durMs=1000*(data.durationSec||120); const deadline=startMs+durMs;
+        const tick=async()=>{
+          const left=Math.max(0,deadline-Date.now());
+          const mm=String(Math.floor(left/60000)).padStart(2,"0");
+          const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0");
+          $timer.textContent=`${mm}:${ss}`;
+          if(left<=0){
+            clearInterval(countdownInt); countdownInt=null;
+            if(isDrawer){ await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true}); }
+          }
+        };
+        tick(); countdownInt=setInterval(tick,300);
       }
+    }else{
+      // rodada não ativa
+      if(countdownInt){clearInterval(countdownInt);countdownInt=null}
+      $timer.textContent="—"; $word.textContent="—"; $hint.textContent="—";
+      $clear.disabled=true; $endRound.disabled=true;
     }
-    document.getElementById("startGame").addEventListener("click", startGameLocalFirst);
+  });
+}
 
-    // ========= Terminar rodada =========
-    document.getElementById("endRound").addEventListener("click", async ()=>{
-      if (!isDrawer || gameStatus!=="jogando") return;
-      await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
+/* ---------- Presença ---------- */
+function listenPlayers(){
+  if(unsubPlayers)unsubPlayers();
+  const ref=db.collection("salas").doc(roomId).collection("players");
+  unsubPlayers=ref.orderBy("joinedAt").onSnapshot(snap=>{
+    const now=Date.now(); const active=[];
+    snap.forEach(d=>{
+      const p=d.data()||{}; const seen=p.lastSeen&&p.lastSeen.toMillis?p.lastSeen.toMillis():0;
+      if((now-seen)<=15000 && p.online!==false) active.push(d.id);
     });
+    active.sort((a,b)=>a.localeCompare(b));
+    playersList=active;
+    $players.innerHTML=playersList.length?playersList.map(n=>(n===nick?"👤 ":"👥 ")+n).join("<br>"):"<em>Ninguém ativo</em>";
+  });
+}
 
-    // ========= ESTADO DA SALA =========
-    function listenRoom() {
-      if (unsubRoom) unsubRoom();
-      const roomRef = db.collection("salas").doc(roomId);
+/* ---------- Espelho do desenho ---------- */
+function listenState(){
+  if(unsubState)unsubState();
+  const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
+  unsubState=ref.onSnapshot(doc=>{
+    const data=doc.data()||{};
+    if(data.clearedAt) ctx.clearRect(0,0,$c.width,$c.height);
+    const s=data.lastSeg; if(s && s.by!==nick) drawSeg(s.p0,s.p1,s.color||"#111",s.size||6);
+  });
+}
 
-      unsubRoom = roomRef.onSnapshot(doc => {
-        const data = doc.data() || {};
-        gameStatus = data.status || "—";
+/* ---------- Desenho ---------- */
+function pos(e){ const r=$c.getBoundingClientRect(); const X=e.touches?e.touches[0].clientX:e.clientX; const Y=e.touches?e.touches[0].clientY:e.clientY; return [Math.max(0,Math.min(1,(X-r.left)/r.width)),Math.max(0,Math.min(1,(Y-r.top)/r.height))];}
+function drawSeg(p0,p1,color,size){ ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size; ctx.beginPath(); ctx.moveTo(p0[0]*$c.width,p0[1]*$c.height); ctx.lineTo(p1[0]*$c.width,p1[1]*$c.height); ctx.stroke(); }
+async function pushSeg(p0,p1,color,size){
+  const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
+  await ref.set({lastSeg:{by:nick,p0,p1,color,size:Number(size),ts:firebase.firestore.FieldValue.serverTimestamp()}},{merge:true});
+}
+let drawing=false,last=null; const canDraw=()=> isDrawer && gameStatus==="jogando";
+$c.addEventListener("mousedown",e=>{ if(!canDraw())return; drawing=true; last=pos(e); e.preventDefault(); });
+$c.addEventListener("mousemove",async e=>{ if(!drawing||!canDraw())return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); });
+window.addEventListener("mouseup",()=>{ drawing=false; });
+$c.addEventListener("touchstart",e=>{ if(!canDraw())return; drawing=true; last=pos(e); e.preventDefault(); },{passive:false});
+$c.addEventListener("touchmove",async e=>{ if(!drawing||!canDraw())return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); },{passive:false});
+$c.addEventListener("touchend",()=>{ drawing=false; });
+$clear.addEventListener("click",async()=>{ if(!canDraw())return; ctx.clearRect(0,0,$c.width,$c.height); const ref=db.collection("salas").doc(roomId).collection("sync").doc("state"); await ref.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); });
 
-        const drawer = data.currentDrawer || "—";
-        const iAmDrawer = (drawer === nick);
-        isDrawer = iAmDrawer;
-
-        $drawerName.textContent = drawer;
-        $roundStatus.textContent = gameStatus;
-
-        // Palavra: só desenhista vê quando jogando
-        if (gameStatus === "jogando") {
-          $word.textContent = iAmDrawer ? (data.word || "—") : "🔒 (secreto)";
-          $hint.textContent = data.hint || "—";
-        } else {
-          $word.textContent = "—";
-          $hint.textContent = "—";
-        }
-
-        // Botões do desenhista
-        const drawerAndPlaying = (iAmDrawer && gameStatus === "jogando");
-        $clear.disabled = !drawerAndPlaying;
-        $endRound.disabled = !drawerAndPlaying;
-
-        // Timer global (todos veem o mesmo, baseado no startAt do servidor)
-        if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
-        if (gameStatus === "jogando" && data.startAt && data.startAt.toMillis) {
-          const startMs = data.startAt.toMillis();
-          const durMs = 1000 * (data.durationSec || 120);
-          const deadline = startMs + durMs;
-
-          const tick = async () => {
-            const left = Math.max(0, deadline - Date.now());
-            const mm = String(Math.floor(left/60000)).padStart(2,"0");
-            const ss = String(Math.floor((left%60000)/1000)).padStart(2,"0");
-            $timer.textContent = mm+":"+ss;
-            if (left <= 0) {
-              clearInterval(countdownInt); countdownInt = null;
-              if (iAmDrawer) {
-                await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
-              }
-            }
-          };
-          tick(); countdownInt = setInterval(tick, 300);
-        } else {
-          $timer.textContent = "—";
-        }
-      });
-    }
-
-    // ========= PRESENÇA =========
-    function listenPlayers() {
-      if (unsubPlayers) unsubPlayers();
-      const ref = db.collection("salas").doc(roomId).collection("players");
-      unsubPlayers = ref.orderBy("joinedAt").onSnapshot(snap => {
-        const now = Date.now();
-        const active = [];
-        snap.forEach(d => {
-          const p = d.data() || {};
-          const seen = p.lastSeen && p.lastSeen.toMillis ? p.lastSeen.toMillis() : 0;
-          const isActive = (now - seen) <= 15000 && p.online !== false; // 15s
-          if (isActive) active.push(d.id);
-        });
-        active.sort((a,b)=>a.localeCompare(b));
-        playersList = active;
-        $players.innerHTML = playersList.length
-          ? playersList.map(n => (n===nick? "👤 ":"👥 ")+n).join("<br>")
-          : "<em>Ninguém ativo</em>";
-      });
-    }
-
-    // ========= ESPELHO DO DESENHO =========
-    function listenState() {
-      if (unsubState) unsubState();
-      const stateRef = db.collection("salas").doc(roomId).collection("sync").doc("state");
-      unsubState = stateRef.onSnapshot(doc => {
-        const data = doc.data() || {};
-        if (data.clearedAt) ctx.clearRect(0,0,$c.width,$c.height);
-        const s = data.lastSeg;
-        if (s && s.by !== nick) drawSeg(s.p0, s.p1, s.color || "#111", s.size || 6);
-      });
-    }
-
-    // ========= DESENHO =========
-    function pos(e){ const r=$c.getBoundingClientRect(); const X=e.touches?e.touches[0].clientX:e.clientX; const Y=e.touches?e.touches[0].clientY:e.clientY; return [Math.max(0,Math.min(1,(X-r.left)/r.width)), Math.max(0,Math.min(1,(Y-r.top)/r.height))];}
-    function drawSeg(p0,p1,color,size){ ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size; ctx.beginPath(); ctx.moveTo(p0[0]*$c.width,p0[1]*$c.height); ctx.lineTo(p1[0]*$c.width,p1[1]*$c.height); ctx.stroke(); }
-    async function pushSeg(p0,p1,color,size){
-      const ref = db.collection("salas").doc(roomId).collection("sync").doc("state");
-      await ref.set({ lastSeg: { by:nick, p0, p1, color, size:Number(size), ts: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true });
-    }
-    let drawing=false, last=null;
-    const canDraw = ()=> isDrawer && gameStatus==="jogando";
-
-    $c.addEventListener("mousedown", e=>{ if(!canDraw()) return; drawing=true; last=pos(e); e.preventDefault(); });
-    $c.addEventListener("mousemove", async e=>{ if(!drawing||!canDraw()) return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{ await pushSeg(last,p,$color.value,Number($size.value)); }catch(_){} last=p; e.preventDefault(); });
-    window.addEventListener("mouseup", ()=>{ drawing=false; });
-    $c.addEventListener("touchstart", e=>{ if(!canDraw()) return; drawing=true; last=pos(e); e.preventDefault(); }, {passive:false});
-    $c.addEventListener("touchmove", async e=>{ if(!drawing||!canDraw()) return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{ await pushSeg(last,p,$color.value,Number($size.value)); }catch(_){} last=p; e.preventDefault(); }, {passive:false});
-    $c.addEventListener("touchend", ()=>{ drawing=false; });
-
-    $clear.addEventListener("click", async ()=>{ if(!canDraw()) return; ctx.clearRect(0,0,$c.width,$c.height); const ref=db.collection("salas").doc(roomId).collection("sync").doc("state"); await ref.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); });
-
-    // ========= CHAT =========
-    function addMsg({nick, text, correct}) {
-      const wrap = document.createElement("div"); wrap.className="msg";
-      const meta = document.createElement("div"); meta.className="meta"; meta.textContent = nick + (correct ? " acertou! 🎉" : "");
-      const body = document.createElement("div"); body.textContent = text;
-      wrap.append(meta, body); $chat.appendChild(wrap); $chat.scrollTop = $chat.scrollHeight;
-    }
-    function listenGuesses(){
-      if (unsubGuesses) unsubGuesses();
-      unsubGuesses = db.collection("salas").doc(roomId).collection("guesses").orderBy("ts","asc").limit(500)
-        .onSnapshot(snap=>{ snap.docChanges().forEach(ch=>{ if (ch.type==="added") addMsg(ch.doc.data()); }); $chat.removeAttribute("aria-busy"); });
-    }
-    const normalize = s => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
-    $chatForm.addEventListener("submit", async e=>{
-      e.preventDefault(); if(!$chatInput.value.trim()) return;
-      const text=$chatInput.value.trim(); $chatInput.value="";
-      const roomDoc = await db.collection("salas").doc(roomId).get(); const data=roomDoc.data()||{};
-      const correct = (data.status==="jogando") && normalize(text)===normalize(data.word);
-      await db.collection("salas").doc(roomId).collection("guesses").add({ nick, text, correct:!!correct, ts: firebase.firestore.FieldValue.serverTimestamp() });
-      if (correct) await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:nick }, { merge:true });
-    });
-
-    // UX
-    $c.addEventListener("contextmenu", e=>e.preventDefault());
-  </script>
+/* ---------- Chat ---------- */
+function addMsg({nick,text,correct}){ const w=document.createElement("div"); w.className="msg"; const m=document.createElement("div"); m.className="meta"; m.textContent=nick+(correct?" acertou! 🎉":""); const b=document.createElement("div"); b.textContent=text; w.append(m,b); $chat.appendChild(w); $chat.scrollTop=$chat.scrollHeight; }
+function listenGuesses(){ if(unsubGuesses)unsubGuesses(); unsubGuesses=db.collection("salas").doc(roomId).collection("guesses").orderBy("ts","asc").limit(500).onSnapshot(s=>{ s.docChanges().forEach(ch=>{ if(ch.type==="added") addMsg(ch.doc.data()); }); $chat.removeAttribute("aria-busy"); }); }
+const normalize=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
+$chatForm.addEventListener("submit",async e=>{
+  e.preventDefault(); if(!$chatInput.value.trim())return;
+  const text=$chatInput.value.trim(); $chatInput.value="";
+  const roomDoc=await db.collection("salas").doc(roomId).get(); const data=roomDoc.data()||{};
+  const correct=(data.status==="jogando") && normalize(text)===normalize(data.word);
+  await db.collection("salas").doc(roomId).collection("guesses").add({nick,text,correct:!!correct,ts:firebase.firestore.FieldValue.serverTimestamp()});
+  if(correct) await db.collection("salas").doc(roomId).set({status:"encerrada",winner:nick},{merge:true});
+});
+$c.addEventListener("contextmenu",e=>e.preventDefault());
+</script>
 </body>
 </html>

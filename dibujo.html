@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Imagem & Ação — V5 (start sempre ativo, timer global, rotação)</title>
+  <title>Imagem & Ação — V6 (start sempre ativo, sem auto-rotação)</title>
   <style>
     :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
     * { box-sizing: border-box; }
@@ -40,8 +40,8 @@
   <header>
     <div class="row">
       <div>
-        <h1>Imagem & Ação — V5</h1>
-        <div class="info">“Iniciar jogo” sempre disponível após conectar. Quem inicia vira o desenhista; timer global de 2:00; rotação automática.</div>
+        <h1>Imagem & Ação — V6</h1>
+        <div class="info">“Iniciar jogo” sempre disponível. Quem clicar vira desenhista. Ao encerrar, qualquer um pode iniciar a próxima.</div>
       </div>
       <div class="pill" id="status">desconectado</div>
     </div>
@@ -173,17 +173,14 @@
       if (!nick) return alert("Escolha um apelido.");
 
       $connect.disabled = true; $leave.disabled = false; $send.disabled = false;
-      $startGame.disabled = false; // <-- SEMPRE habilitado após conectar
+      $startGame.disabled = false; // SEMPRE habilitado após conectar
       $status.textContent = "conectado";
 
       const playerRef = db.collection("salas").doc(roomId).collection("players").doc(nick);
       await playerRef.set({ nick, online: true, joinedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
       // Heartbeat de presença (5s)
-      heartbeatInt = setInterval(() => {
-        playerRef.set({ online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      }, 5000);
-
+      heartbeatInt = setInterval(() => { playerRef.set({ online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); }, 5000);
       window.addEventListener("beforeunload", () => { try { playerRef.set({ online:false, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(_) {} });
       document.addEventListener("visibilitychange", () => { try { playerRef.set({ online: !document.hidden, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(_) {} });
 
@@ -204,35 +201,46 @@
       ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML = ""; $chat.innerHTML = "";
     });
 
-    // ========= RODADA =========
-    async function startRound(drawerNick) {
-      const word = WORDS[Math.floor(Math.random() * WORDS.length)];
-      const hint = word.replace(/[a-záéíóúãõâêîôûç]/gi, " _ ");
+    // ========= INICIAR RODADA (sem alerta; no-op se já estiver jogando) =========
+    async function atomicStartRoundIfIdle(drawerNick){
       const roomRef = db.collection("salas").doc(roomId);
-      const stateRef = roomRef.collection("sync").doc("state");
-
-      await stateRef.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeg: null }, { merge: true });
-
-      const snap = await roomRef.get();
-      const round = (snap.exists && snap.data().round) ? (snap.data().round + 1) : 1;
-
-      await roomRef.set({
-        currentDrawer: drawerNick,
-        status: "jogando",
-        word, hint, winner: null,
-        round,
-        startAt: firebase.firestore.FieldValue.serverTimestamp(), // timer global
-        durationSec: 120
-      }, { merge: true });
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(roomRef);
+        const status = snap.exists ? snap.data().status : null;
+        if (status === "jogando") return; // no-op silencioso
+        const word = WORDS[Math.floor(Math.random() * WORDS.length)];
+        const hint = word.replace(/[a-záéíóúãõâêîôûç]/gi, " _ ");
+        const stateRef = roomRef.collection("sync").doc("state");
+        tx.set(stateRef, { clearedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeg: null }, { merge: true });
+        const round = (snap.exists && snap.data().round) ? (snap.data().round + 1) : 1;
+        tx.set(roomRef, {
+          currentDrawer: drawerNick,
+          status: "jogando",
+          word, hint, winner: null,
+          round,
+          startAt: firebase.firestore.FieldValue.serverTimestamp(),
+          durationSec: 120
+        }, { merge: true });
+      });
     }
 
+    document.getElementById("startGame").addEventListener("click", async ()=>{
+      await atomicStartRoundIfIdle(nick); // quem clicar vira desenhista SE estiver livre
+    });
+
+    // ========= Terminar rodada =========
+    document.getElementById("endRound").addEventListener("click", async ()=>{
+      if (!isDrawer || gameStatus!=="jogando") return;
+      await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
+    });
+
+    // ========= SALA/RODADA (sem auto-rotação) =========
     function listenRoom() {
       if (unsubRoom) unsubRoom();
       const roomRef = db.collection("salas").doc(roomId);
 
       unsubRoom = roomRef.onSnapshot(doc => {
         const data = doc.data() || {};
-        const prevStatus = gameStatus;
         gameStatus = data.status || "—";
         const drawer = data.currentDrawer || "—";
         isDrawer = (drawer === nick);
@@ -242,10 +250,13 @@
         $word.textContent = isDrawer && gameStatus==="jogando" ? (data.word || "—") : (gameStatus==="jogando" ? "🔒 (secreto)" : "—");
         $hint.textContent = data.hint || "—";
 
-        // IMPORTANTE: NÃO desabilitar o botão iniciar jogo aqui
+        // Botões do desenhista
         const drawerAndPlaying = (isDrawer && gameStatus === "jogando");
         $clear.disabled = !drawerAndPlaying;
         $endRound.disabled = !drawerAndPlaying;
+
+        // NUNCA desabilite o Start
+        $startGame.disabled = false;
 
         // Timer global (todos veem)
         if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
@@ -261,30 +272,20 @@
             $timer.textContent = mm+":"+ss;
             if (left <= 0) {
               clearInterval(countdownInt); countdownInt = null;
-              if (isDrawer) await advanceTurn("timeout");
+              if (isDrawer) {
+                // encerramos a rodada, mas NÃO iniciamos outra automaticamente
+                await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
+              }
             }
           };
           tick(); countdownInt = setInterval(tick, 300);
         } else {
           $timer.textContent = "—";
         }
-
-        // Avança automaticamente quando encerrar por acerto
-        if (prevStatus === "jogando" && gameStatus === "encerrada" && isDrawer) {
-          advanceTurn("win");
-        }
       });
     }
 
-    async function advanceTurn(reason) {
-      // próximo desenhista entre **ativos**
-      if (!playersList.length) return;
-      const current = $drawerName.textContent;
-      const idx = Math.max(0, playersList.indexOf(current));
-      const next = playersList[(idx + 1) % playersList.length];
-      await startRound(next);
-    }
-
+    // ========= PRESENÇA =========
     function listenPlayers() {
       if (unsubPlayers) unsubPlayers();
       const ref = db.collection("salas").doc(roomId).collection("players");
@@ -299,7 +300,9 @@
         });
         active.sort((a,b)=>a.localeCompare(b));
         playersList = active;
-        $players.innerHTML = playersList.map(n => (n===nick? "👤 ":"👥 ")+n).join("<br>") || "<em>Ninguém ativo</em>";
+        $players.innerHTML = playersList.length
+          ? playersList.map(n => (n===nick? "👤 ":"👥 ")+n).join("<br>")
+          : "<em>Ninguém ativo</em>";
       });
     }
 
@@ -354,22 +357,6 @@
       const correct = (data.status==="jogando") && normalize(text)===normalize(data.word);
       await db.collection("salas").doc(roomId).collection("guesses").add({ nick, text, correct:!!correct, ts: firebase.firestore.FieldValue.serverTimestamp() });
       if (correct) await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:nick }, { merge:true });
-    });
-
-    // ========= BOTÕES =========
-    document.getElementById("startGame").addEventListener("click", async ()=>{
-      // Mesmo sempre habilitado, impedimos iniciar se já existe rodada rolando
-      const roomRef = db.collection("salas").doc(roomId);
-      const snap = await roomRef.get();
-      const status = snap.exists ? snap.data().status : null;
-      if (status === "jogando") { alert("Já existe uma rodada em andamento. Aguarde terminar."); return; }
-      await startRound(nick); // quem clicou vira desenhista
-    });
-
-    document.getElementById("endRound").addEventListener("click", async ()=>{
-      if (!isDrawer || gameStatus!=="jogando") return;
-      await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
-      // listenRoom -> advanceTurn
     });
 
     // UX

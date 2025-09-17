@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Imagem & Ação — V6 (start sempre ativo, sem auto-rotação)</title>
+  <title>Imagem & Ação — V7 (start local-first, palavra e desenho liberados)</title>
   <style>
     :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
     * { box-sizing: border-box; }
@@ -40,8 +40,8 @@
   <header>
     <div class="row">
       <div>
-        <h1>Imagem & Ação — V6</h1>
-        <div class="info">“Iniciar jogo” sempre disponível. Quem clicar vira desenhista. Ao encerrar, qualquer um pode iniciar a próxima.</div>
+        <h1>Imagem & Ação — V7</h1>
+        <div class="info">“Iniciar jogo” deixa quem clicou desenhar na hora. Palavra aparece pro desenhista. Ao encerrar, qualquer um pode iniciar outra.</div>
       </div>
       <div class="pill" id="status">desconectado</div>
     </div>
@@ -201,32 +201,78 @@
       ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML = ""; $chat.innerHTML = "";
     });
 
-    // ========= INICIAR RODADA (sem alerta; no-op se já estiver jogando) =========
-    async function atomicStartRoundIfIdle(drawerNick){
-      const roomRef = db.collection("salas").doc(roomId);
-      await db.runTransaction(async (tx) => {
-        const snap = await tx.get(roomRef);
-        const status = snap.exists ? snap.data().status : null;
-        if (status === "jogando") return; // no-op silencioso
-        const word = WORDS[Math.floor(Math.random() * WORDS.length)];
-        const hint = word.replace(/[a-záéíóúãõâêîôûç]/gi, " _ ");
+    // ========= INICIAR JOGO (local-first, sem alerta) =========
+    function pickWord(){ return WORDS[Math.floor(Math.random() * WORDS.length)]; }
+    function makeHint(word){ return word.replace(/[a-záéíóúãõâêîôûç]/gi, " _ "); }
+
+    async function startGameLocalFirst() {
+      // Se já estiver jogando, não faz nada (silencioso)
+      if (gameStatus === "jogando") return;
+
+      // 1) Atualiza UI local imediatamente
+      const localWord = pickWord();
+      const localHint = makeHint(localWord);
+      isDrawer = true;
+      gameStatus = "jogando";
+      $drawerName.textContent = nick;
+      $roundStatus.textContent = "jogando";
+      $word.textContent = localWord;      // só você vê
+      $hint.textContent = localHint;      // todos verão via snapshot logo depois
+      $clear.disabled = true;             // libera após Firestore confirmar (uma batidinha de segurança)
+      $endRound.disabled = true;
+
+      // Timer local imediato (será re-sincronizado pelo snapshot depois)
+      if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
+      const localDeadline = Date.now() + 120000;
+      const tickLocal = () => {
+        const left = Math.max(0, localDeadline - Date.now());
+        const mm = String(Math.floor(left/60000)).padStart(2,"0");
+        const ss = String(Math.floor((left%60000)/1000)).padStart(2,"0");
+        $timer.textContent = mm+":"+ss;
+      };
+      tickLocal(); countdownInt = setInterval(tickLocal, 300);
+
+      // 2) Persiste no Firestore
+      try {
+        const roomRef = db.collection("salas").doc(roomId);
         const stateRef = roomRef.collection("sync").doc("state");
-        tx.set(stateRef, { clearedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeg: null }, { merge: true });
+        await stateRef.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeg: null }, { merge: true });
+
+        const snap = await roomRef.get();
         const round = (snap.exists && snap.data().round) ? (snap.data().round + 1) : 1;
-        tx.set(roomRef, {
-          currentDrawer: drawerNick,
+
+        await roomRef.set({
+          currentDrawer: nick,
           status: "jogando",
-          word, hint, winner: null,
+          word: localWord,
+          hint: localHint,
+          winner: null,
           round,
           startAt: firebase.firestore.FieldValue.serverTimestamp(),
           durationSec: 120
         }, { merge: true });
-      });
-    }
 
-    document.getElementById("startGame").addEventListener("click", async ()=>{
-      await atomicStartRoundIfIdle(nick); // quem clicar vira desenhista SE estiver livre
-    });
+        // Habilita ações do desenhista
+        $clear.disabled = false;
+        $endRound.disabled = false;
+
+      } catch (err) {
+        // Reverte UI caso falhe
+        console.error(err);
+        isDrawer = false;
+        gameStatus = "—";
+        $drawerName.textContent = "—";
+        $roundStatus.textContent = "—";
+        $word.textContent = "—";
+        $hint.textContent = "—";
+        $timer.textContent = "—";
+        $clear.disabled = true;
+        $endRound.disabled = true;
+        if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
+        alert("Não foi possível iniciar o jogo (verifique as regras do Firestore).");
+      }
+    }
+    document.getElementById("startGame").addEventListener("click", startGameLocalFirst);
 
     // ========= Terminar rodada =========
     document.getElementById("endRound").addEventListener("click", async ()=>{
@@ -234,7 +280,7 @@
       await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
     });
 
-    // ========= SALA/RODADA (sem auto-rotação) =========
+    // ========= ESTADO DA SALA =========
     function listenRoom() {
       if (unsubRoom) unsubRoom();
       const roomRef = db.collection("salas").doc(roomId);
@@ -242,23 +288,29 @@
       unsubRoom = roomRef.onSnapshot(doc => {
         const data = doc.data() || {};
         gameStatus = data.status || "—";
+
         const drawer = data.currentDrawer || "—";
-        isDrawer = (drawer === nick);
+        const iAmDrawer = (drawer === nick);
+        isDrawer = iAmDrawer;
 
         $drawerName.textContent = drawer;
         $roundStatus.textContent = gameStatus;
-        $word.textContent = isDrawer && gameStatus==="jogando" ? (data.word || "—") : (gameStatus==="jogando" ? "🔒 (secreto)" : "—");
-        $hint.textContent = data.hint || "—";
+
+        // Palavra: só desenhista vê quando jogando
+        if (gameStatus === "jogando") {
+          $word.textContent = iAmDrawer ? (data.word || "—") : "🔒 (secreto)";
+          $hint.textContent = data.hint || "—";
+        } else {
+          $word.textContent = "—";
+          $hint.textContent = "—";
+        }
 
         // Botões do desenhista
-        const drawerAndPlaying = (isDrawer && gameStatus === "jogando");
+        const drawerAndPlaying = (iAmDrawer && gameStatus === "jogando");
         $clear.disabled = !drawerAndPlaying;
         $endRound.disabled = !drawerAndPlaying;
 
-        // NUNCA desabilite o Start
-        $startGame.disabled = false;
-
-        // Timer global (todos veem)
+        // Timer global (todos veem o mesmo, baseado no startAt do servidor)
         if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
         if (gameStatus === "jogando" && data.startAt && data.startAt.toMillis) {
           const startMs = data.startAt.toMillis();
@@ -272,8 +324,7 @@
             $timer.textContent = mm+":"+ss;
             if (left <= 0) {
               clearInterval(countdownInt); countdownInt = null;
-              if (isDrawer) {
-                // encerramos a rodada, mas NÃO iniciamos outra automaticamente
+              if (iAmDrawer) {
                 await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
               }
             }
@@ -341,7 +392,7 @@
     function addMsg({nick, text, correct}) {
       const wrap = document.createElement("div"); wrap.className="msg";
       const meta = document.createElement("div"); meta.className="meta"; meta.textContent = nick + (correct ? " acertou! 🎉" : "");
-      const body = document.createElement("div"); body.textContent = text; if (nick===window.nick) body.classList.add("you");
+      const body = document.createElement("div"); body.textContent = text;
       wrap.append(meta, body); $chat.appendChild(wrap); $chat.scrollTop = $chat.scrollHeight;
     }
     function listenGuesses(){

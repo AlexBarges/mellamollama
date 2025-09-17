@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Imagem & Ação (DEBUG • ver tráfego de desenho)</title>
+  <style>
+    :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
+    header { position: sticky; top: 0; background: white; box-shadow: var(--shadow); padding: 14px 18px; z-index: 10; display:flex; justify-content:space-between; align-items:center; }
+    .pill { font-size: 12px; background: #111; color: #fff; padding: 4px 10px; border-radius: 999px; }
+    main { max-width: 1100px; margin: 22px auto; padding: 0 16px; display: grid; gap: var(--gap); }
+    .grid { display: grid; grid-template-columns: 300px 1fr 320px; gap: var(--gap); align-items: start; }
+    .card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+    #canvasWrap { border: 1px solid #eee; border-radius: var(--radius); overflow: hidden; background: #fff; }
+    canvas { display: block; width: 100%; height: 480px; background: #fff; touch-action: none; }
+    .info { font-size: 12px; color: #555; }
+    @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } }
+    .debugbar { font-size:12px; display:flex; gap:10px; align-items:center; }
+    .k { background:#111; color:#fff; border-radius:6px; padding:3px 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div><strong>Imagem & Ação — DEBUG</strong></div>
+      <div class="info">Abra em duas abas/dispositivos, conecte na mesma sala. Veja os contadores subirem.</div>
+    </div>
+    <div class="debugbar">
+      <div class="k"><span id="dbgWrites">0</span> writes</div>
+      <div class="k"><span id="dbgRecv">0</span> recebidos</div>
+      <div class="k"><span id="dbgRoom">—</span></div>
+      <div class="pill" id="status">desconectado</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card">
+        <div style="display:grid; gap:10px;">
+          <label>Apelido <input id="nick" placeholder="ex.: Alex"/></label>
+          <label>Sala <input id="room" placeholder="ex.: geral"/></label>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <button id="connect">Conectar</button>
+            <button id="drawer" disabled>Virar desenhista</button>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <button id="start" disabled>Iniciar rodada</button>
+            <button id="clear" disabled>Limpar</button>
+          </div>
+          <div class="info"><strong>Palavra:</strong> <span id="word">—</span></div>
+          <div class="info"><strong>Dica:</strong> <span id="hint">—</span></div>
+          <div class="info"><strong>Desenhista:</strong> <span id="drawerName">—</span></div>
+          <div class="info"><strong>Status:</strong> <span id="roundStatus">—</span></div>
+          <div class="info">Espessura <input id="size" type="range" min="2" max="18" value="6"/></div>
+          <div class="info">Cor <input id="color" type="color" value="#111111"/></div>
+        </div>
+      </section>
+
+      <section class="card" id="canvasWrap">
+        <canvas id="c"></canvas>
+      </section>
+
+      <section class="card">
+        <div id="log" class="info" style="height:480px; overflow:auto; white-space:pre-wrap;"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA9FBaZDDJ_fOOWW4JNxoR_IbHCTG9CgqE",
+      authDomain: "chatenvivo-6b518.firebaseapp.com",
+      projectId: "chatenvivo-6b518",
+      storageBucket: "chatenvivo-6b518.firebasestorage.app",
+      messagingSenderId: "351680385901",
+      appId: "1:351680385901:web:8105134053b010cd69c064",
+      measurementId: "G-HF86GVYTVC"
+    };
+
+    let app, db; try { app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); document.getElementById("status").textContent = "SDK carregado"; } catch(e){ console.error(e); }
+
+    const $status = document.getElementById("status");
+    const $nick = document.getElementById("nick");
+    const $room = document.getElementById("room");
+    const $connect = document.getElementById("connect");
+    const $drawerBtn = document.getElementById("drawer");
+    const $start = document.getElementById("start");
+    const $clear = document.getElementById("clear");
+    const $word = document.getElementById("word");
+    const $hint = document.getElementById("hint");
+    const $drawerName = document.getElementById("drawerName");
+    const $roundStatus = document.getElementById("roundStatus");
+    const $c = document.getElementById("c");
+    const ctx = $c.getContext("2d");
+    const $size = document.getElementById("size");
+    const $color = document.getElementById("color");
+    const $log = document.getElementById("log");
+    const $dbgWrites = document.getElementById("dbgWrites");
+    const $dbgRecv = document.getElementById("dbgRecv");
+    const $dbgRoom = document.getElementById("dbgRoom");
+
+    function log(msg){ console.log(msg); $log.textContent += msg + "\\n"; $log.scrollTop = $log.scrollHeight; }
+
+    function resizeCanvas(){ const r = $c.getBoundingClientRect(); $c.width = Math.floor(r.width); $c.height = Math.floor(r.height); }
+    window.addEventListener("resize", resizeCanvas); setTimeout(resizeCanvas,0);
+
+    let roomId="", nick="", isDrawer=false;
+    let unsubRoom=null, unsubStrokes=null;
+
+    const WORDS=["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
+
+    $connect.addEventListener("click", async ()=>{
+      nick = ($nick.value||"Anon").trim();
+      roomId = ($room.value||"geral").trim().toLowerCase();
+      if (!db) return alert("Firebase não está pronto.");
+      $status.textContent = "conectado";
+      $drawerBtn.disabled = false; $start.disabled = true; $clear.disabled = true;
+      $dbgRoom.textContent = "sala: " + roomId;
+      await db.collection("salas").doc(roomId).collection("players").doc(nick).set({nick, lastSeen: firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      listenRoom(); listenStrokes();
+      log("Conectado na sala " + roomId + " como " + nick);
+    });
+
+    async function setDrawer(n){ await db.collection("salas").doc(roomId).set({ currentDrawer: n||nick }, {merge:true}); }
+    $drawerBtn.addEventListener("click", ()=> setDrawer(nick));
+
+    $start.addEventListener("click", async ()=>{
+      if (!isDrawer) return alert("Apenas desenhista.");
+      const word=WORDS[Math.floor(Math.random()*WORDS.length)];
+      const hint=word.replace(/[a-záéíóúãõâêîôûç]/gi," _ ");
+      // limpa strokes
+      const ref=db.collection("salas").doc(roomId).collection("strokes");
+      const snap=await ref.get(); const batch=db.batch(); snap.forEach(d=>batch.delete(d.ref)); await batch.commit();
+      await db.collection("salas").doc(roomId).set({ status:"jogando", word, hint, winner:null, startedAt: firebase.firestore.FieldValue.serverTimestamp() },{merge:true});
+      log("Rodada iniciada: " + word);
+    });
+
+    $clear.addEventListener("click", async ()=>{
+      if (!isDrawer) return;
+      ctx.clearRect(0,0,$c.width,$c.height);
+      const ref=db.collection("salas").doc(roomId).collection("strokes");
+      const snap=await ref.get(); const batch=db.batch(); snap.forEach(d=>batch.delete(d.ref)); await batch.commit();
+      log("Limpei strokes");
+    });
+
+    function listenRoom(){
+      if (unsubRoom) unsubRoom();
+      unsubRoom = db.collection("salas").doc(roomId).onSnapshot(doc=>{
+        const data = doc.data()||{};
+        $drawerName.textContent = data.currentDrawer || "—";
+        $roundStatus.textContent = data.status || "—";
+        $word.textContent = (data.currentDrawer===nick) ? (data.word||"—") : (data.status==="jogando" ? "🔒 (secreto)" : "—");
+        $hint.textContent = data.hint || "—";
+        isDrawer = (data.currentDrawer===nick);
+        $start.disabled = !isDrawer;
+        $clear.disabled = !isDrawer;
+      });
+    }
+
+    // desenho - envia segmento a cada movimento, com serverTimestamp (ordenável)
+    function pos(evt){ const r=$c.getBoundingClientRect(); const X=evt.touches?evt.touches[0].clientX:evt.clientX; const Y=evt.touches?evt.touches[0].clientY:evt.clientY; return [Math.max(0,Math.min(1,(X-r.left)/r.width)), Math.max(0,Math.min(1,(Y-r.top)/r.height))];}
+    function drawSegment(p0,p1,color,size){ ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size; ctx.beginPath(); ctx.moveTo(p0[0]*$c.width,p0[1]*$c.height); ctx.lineTo(p1[0]*$c.width,p1[1]*$c.height); ctx.stroke(); }
+    function localDrawPoly(pts,color,size){ for(let i=1;i<pts.length;i++) drawSegment(pts[i-1],pts[i],color,size); }
+    async function pushStroke(pts,color,size){
+      try{
+        await db.collection("salas").doc(roomId).collection("strokes").add({
+          by:nick, pts, color, size:Number(size), ts: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        $dbgWrites.textContent = String(Number($dbgWrites.textContent)+1);
+      }catch(e){ log("ERRO write: "+e.message); }
+    }
+
+    function listenStrokes(){
+      if (unsubStrokes) unsubStrokes();
+      unsubStrokes = db.collection("salas").doc(roomId).collection("strokes").orderBy("ts","asc")
+        .onSnapshot(snap=>{
+          snap.docChanges().forEach(ch=>{
+            if (ch.type==="added"){
+              const s=ch.doc.data();
+              localDrawPoly(s.pts, s.color||"#111", s.size||6);
+              $dbgRecv.textContent = String(Number($dbgRecv.textContent)+1);
+            }
+          });
+        }, err => { log("onSnapshot ERRO: " + err.message); });
+    }
+
+    let drawing=false, lastP=null;
+    function pointerDown(e){ if(!isDrawer) return; drawing=true; lastP=pos(e); e.preventDefault(); }
+    async function pointerMove(e){
+      if(!drawing||!isDrawer) return;
+      const p=pos(e);
+      localDrawPoly([lastP,p], $color.value, Number($size.value));
+      await pushStroke([lastP,p], $color.value, Number($size.value));
+      lastP=p; e.preventDefault();
+    }
+    function pointerUp(e){ drawing=false; e.preventDefault(); }
+
+    $c.addEventListener("mousedown", pointerDown);
+    $c.addEventListener("mousemove", pointerMove);
+    window.addEventListener("mouseup", pointerUp);
+    $c.addEventListener("touchstart", pointerDown, {passive:false});
+    $c.addEventListener("touchmove", pointerMove, {passive:false});
+    $c.addEventListener("touchend", pointerUp);
+
+    $c.addEventListener("contextmenu", e=>e.preventDefault());
+  </script>
+</body>
+</html>

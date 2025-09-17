@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Imagem & Ação — V8 (start imediato e robusto)</title>
+<title>Imagem & Ação — V9 (desenho persistente + chat por rodada)</title>
 <style>
   :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
   *{box-sizing:border-box}
@@ -39,8 +39,8 @@
 <header>
   <div class="row">
     <div>
-      <h1>Imagem & Ação — V8</h1>
-      <div class="info">“Iniciar jogo” torna imediato quem clicou o desenhista. Ao encerrar, qualquer um pode iniciar outra.</div>
+      <h1>Imagem & Ação — V9</h1>
+      <div class="info">Desenho persiste; chat limpa a cada rodada. “Iniciar jogo” faz de quem clicou o desenhista.</div>
     </div>
     <div class="pill" id="status">desconectado</div>
   </div>
@@ -143,6 +143,8 @@ let roomId="", nick="", isDrawer=false;
 let unsubRoom=null, unsubState=null, unsubGuesses=null, unsubPlayers=null;
 let heartbeatInt=null, countdownInt=null;
 let gameStatus="—", playersList=[];
+let currentRound=0;
+let lastClearedAt=0; // <<< evita limpar o canvas repetidamente
 
 const WORDS=["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
 const pickWord = ()=> WORDS[Math.floor(Math.random()*WORDS.length)];
@@ -166,53 +168,61 @@ $connect.addEventListener("click", async ()=>{
   heartbeatInt=setInterval(()=>playerRef.set({online:true,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}),5000);
   window.addEventListener("beforeunload",()=>{try{playerRef.set({online:false,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch{};});
 
-  listenRoom(); listenPlayers(); listenState(); listenGuesses();
+  listenRoom(); listenPlayers(); listenState(); // guesses será ligado quando soubermos o round
 });
 
+/* ---------- Leave ---------- */
 $leave.addEventListener("click",()=>{
   [unsubRoom,unsubState,unsubGuesses,unsubPlayers].forEach(fn=>fn&&fn());
   if(heartbeatInt){clearInterval(heartbeatInt);heartbeatInt=null}
   if(countdownInt){clearInterval(countdownInt);countdownInt=null}
   $connect.disabled=false; $leave.disabled=true; $send.disabled=true; $startGame.disabled=true; $endRound.disabled=true; $clear.disabled=true;
-  $status.textContent="desconectado"; isDrawer=false; gameStatus="—";
+  $status.textContent="desconectado"; isDrawer=false; gameStatus="—"; currentRound=0; lastClearedAt=0;
   $word.textContent=$hint.textContent=$drawerName.textContent=$roundStatus.textContent=$timer.textContent="—";
   ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML=""; $chat.innerHTML="";
 });
 
-/* ---------- START: imediato no cliente + gravação ---------- */
+/* ---------- START: local-first ---------- */
 async function startNow() {
   if(!roomId||!nick) return;
+  if(gameStatus==="jogando") return; // silencioso
 
-  // 1) Atualiza UI local (IMEDIATO)
+  // 1) UI local
   const w = pickWord(); const h = makeHint(w);
   isDrawer=true; gameStatus="jogando";
   $drawerName.textContent=nick; $roundStatus.textContent="jogando";
   $word.textContent=w; $hint.textContent=h;
-  $clear.disabled=false; $endRound.disabled=true; // libera clear; end habilita após confirmação do servidor
+  $clear.disabled=false; $endRound.disabled=true;
 
+  // timer local
   if(countdownInt){clearInterval(countdownInt)} const localDeadline=Date.now()+120000;
   const t=()=>{const left=Math.max(0,localDeadline-Date.now()); const mm=String(Math.floor(left/60000)).padStart(2,"0"); const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0"); $timer.textContent=`${mm}:${ss}`}; t(); countdownInt=setInterval(t,300);
 
   // limpa canvas local
   ctx.clearRect(0,0,$c.width,$c.height);
 
-  // 2) Persiste no Firestore (sem checar status; a última escrita prevalece)
   try{
     const roomRef = db.collection("salas").doc(roomId);
     const stateRef = roomRef.collection("sync").doc("state");
+
     await stateRef.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp(),lastSeg:null},{merge:true});
+
     const snap = await roomRef.get();
-    const round = (snap.exists && snap.data().round) ? (snap.data().round+1) : 1;
+    const newRound = (snap.exists && snap.data().round) ? (snap.data().round+1) : 1;
+
     await roomRef.set({
-      currentDrawer:nick,status:"jogando",word:w,hint:h,winner:null,round,
-      startAt:firebase.firestore.FieldValue.serverTimestamp(),durationSec:120
+      currentDrawer:nick,status:"jogando",word:w,hint:h,winner:null,
+      round:newRound, startAt:firebase.firestore.FieldValue.serverTimestamp(), durationSec:120
     },{merge:true});
-    // confirmado pelo servidor -> habilita terminar
+
+    // fixa round atual e limpa chat desta UI
+    currentRound = newRound;
+    bindGuessesForRound(currentRound);
+
     $endRound.disabled=false;
   }catch(e){
     console.error(e);
-    // se falhar, reverte só o necessário
-    isDrawer=false; gameStatus="—";
+    isDrawer=false; gameStatus="—"; currentRound=0;
     $drawerName.textContent="—"; $roundStatus.textContent="—"; $word.textContent="—"; $hint.textContent="—"; $timer.textContent="—";
     $clear.disabled=true; $endRound.disabled=true; if(countdownInt){clearInterval(countdownInt);countdownInt=null}
     alert("Não foi possível iniciar o jogo. Verifique as regras do Firestore.");
@@ -226,23 +236,31 @@ $endRound.addEventListener("click", async ()=>{
   await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true});
 });
 
-/* ---------- Sala / Timer global ---------- */
+/* ---------- Sala / Timer global / Rodadas ---------- */
 function listenRoom(){
   if(unsubRoom)unsubRoom();
   const roomRef=db.collection("salas").doc(roomId);
+
+  let lastStatus="—";
   unsubRoom=roomRef.onSnapshot(doc=>{
     const data=doc.data()||{};
     gameStatus=data.status||"—";
     const drawer=data.currentDrawer||"—";
     isDrawer=(drawer===nick);
-
     $drawerName.textContent=drawer; $roundStatus.textContent=gameStatus;
+
+    // round mudou? rebind do chat
+    const r = data.round || 0;
+    if (r !== currentRound) {
+      currentRound = r;
+      bindGuessesForRound(currentRound); // limpa e mostra só a rodada atual
+    }
 
     if(gameStatus==="jogando"){
       $word.textContent=isDrawer?(data.word||"—"):"🔒 (secreto)";
       $hint.textContent=data.hint||"—";
       $clear.disabled=isDrawer; $endRound.disabled=!isDrawer;
-      // timer do servidor
+
       if(countdownInt){clearInterval(countdownInt);countdownInt=null}
       if(data.startAt&&data.startAt.toMillis){
         const startMs=data.startAt.toMillis(); const durMs=1000*(data.durationSec||120); const deadline=startMs+durMs;
@@ -258,12 +276,19 @@ function listenRoom(){
         };
         tick(); countdownInt=setInterval(tick,300);
       }
-    }else{
-      // rodada não ativa
+    } else {
       if(countdownInt){clearInterval(countdownInt);countdownInt=null}
-      $timer.textContent="—"; $word.textContent="—"; $hint.textContent="—";
+      $timer.textContent="—";
+      $word.textContent="—"; $hint.textContent="—";
       $clear.disabled=true; $endRound.disabled=true;
+
+      // se acabou de sair de "jogando" -> limpa chat imediatamente
+      if (lastStatus === "jogando") {
+        $chat.innerHTML = "";
+      }
     }
+
+    lastStatus = gameStatus;
   });
 }
 
@@ -283,14 +308,24 @@ function listenPlayers(){
   });
 }
 
-/* ---------- Espelho do desenho ---------- */
+/* ---------- Espelho do desenho (clear só quando mudar!) ---------- */
 function listenState(){
   if(unsubState)unsubState();
   const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
   unsubState=ref.onSnapshot(doc=>{
     const data=doc.data()||{};
-    if(data.clearedAt) ctx.clearRect(0,0,$c.width,$c.height);
-    const s=data.lastSeg; if(s && s.by!==nick) drawSeg(s.p0,s.p1,s.color||"#111",s.size||6);
+
+    // LIMPAR SÓ SE O clearedAt MUDAR
+    let cur = 0;
+    if (data.clearedAt && data.clearedAt.toMillis) cur = data.clearedAt.toMillis();
+    else if (typeof data.clearedAt === "number") cur = data.clearedAt;
+    if (cur && cur !== lastClearedAt) {
+      lastClearedAt = cur;
+      ctx.clearRect(0,0,$c.width,$c.height);
+    }
+
+    const s=data.lastSeg;
+    if(s && s.by!==nick) drawSeg(s.p0,s.p1,s.color||"#111",s.size||6);
   });
 }
 
@@ -309,20 +344,34 @@ $c.addEventListener("touchstart",e=>{ if(!canDraw())return; drawing=true; last=p
 $c.addEventListener("touchmove",async e=>{ if(!drawing||!canDraw())return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); },{passive:false});
 $c.addEventListener("touchend",()=>{ drawing=false; });
 $clear.addEventListener("click",async()=>{ if(!canDraw())return; ctx.clearRect(0,0,$c.width,$c.height); const ref=db.collection("salas").doc(roomId).collection("sync").doc("state"); await ref.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); });
+$c.addEventListener("contextmenu",e=>e.preventDefault());
 
-/* ---------- Chat ---------- */
+/* ---------- Chat (por rodada) ---------- */
 function addMsg({nick,text,correct}){ const w=document.createElement("div"); w.className="msg"; const m=document.createElement("div"); m.className="meta"; m.textContent=nick+(correct?" acertou! 🎉":""); const b=document.createElement("div"); b.textContent=text; w.append(m,b); $chat.appendChild(w); $chat.scrollTop=$chat.scrollHeight; }
-function listenGuesses(){ if(unsubGuesses)unsubGuesses(); unsubGuesses=db.collection("salas").doc(roomId).collection("guesses").orderBy("ts","asc").limit(500).onSnapshot(s=>{ s.docChanges().forEach(ch=>{ if(ch.type==="added") addMsg(ch.doc.data()); }); $chat.removeAttribute("aria-busy"); }); }
+
+function bindGuessesForRound(round){
+  if(unsubGuesses){unsubGuesses();unsubGuesses=null;}
+  $chat.innerHTML=""; // limpa visualmente a cada nova rodada
+  let q = db.collection("salas").doc(roomId).collection("guesses");
+  if (round) q = q.where("round","==", round);
+  unsubGuesses = q.orderBy("ts","asc").limit(500).onSnapshot(s=>{
+    s.docChanges().forEach(ch=>{ if(ch.type==="added") addMsg(ch.doc.data()); });
+    $chat.removeAttribute("aria-busy");
+  });
+}
+
 const normalize=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
 $chatForm.addEventListener("submit",async e=>{
   e.preventDefault(); if(!$chatInput.value.trim())return;
   const text=$chatInput.value.trim(); $chatInput.value="";
   const roomDoc=await db.collection("salas").doc(roomId).get(); const data=roomDoc.data()||{};
   const correct=(data.status==="jogando") && normalize(text)===normalize(data.word);
-  await db.collection("salas").doc(roomId).collection("guesses").add({nick,text,correct:!!correct,ts:firebase.firestore.FieldValue.serverTimestamp()});
+  const r = data.round || currentRound || 0;
+  await db.collection("salas").doc(roomId).collection("guesses").add({
+    nick,text,correct:!!correct,round:r,ts:firebase.firestore.FieldValue.serverTimestamp()
+  });
   if(correct) await db.collection("salas").doc(roomId).set({status:"encerrada",winner:nick},{merge:true});
 });
-$c.addEventListener("contextmenu",e=>e.preventDefault());
 </script>
 </body>
 </html>

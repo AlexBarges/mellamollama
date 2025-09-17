@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Imagem & Ação (tempo real • segmentos contínuos)</title>
+  <style>
+    :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
+    header { position: sticky; top: 0; background: white; box-shadow: var(--shadow); padding: 14px 18px; z-index: 10; }
+    header h1 { font-size: 18px; margin: 0 0 6px; }
+    header .row { display: grid; grid-template-columns: 1fr auto; gap: var(--gap); align-items: center; }
+    .pill { font-size: 12px; background: #111; color: #fff; padding: 4px 10px; border-radius: 999px; }
+    main { max-width: 1100px; margin: 22px auto; padding: 0 16px; display: grid; gap: var(--gap); }
+    .grid { display: grid; grid-template-columns: 300px 1fr 320px; gap: var(--gap); align-items: start; }
+    .card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+    label { display: grid; gap: 6px; font-size: 14px; }
+    input, button, select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; }
+    button { cursor: pointer; border: 0; background: #111; color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .controls { display: grid; gap: var(--gap); }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+    #canvasWrap { position: relative; border: 1px solid #eee; border-radius: var(--radius); overflow: hidden; background: #fff; }
+    canvas { display: block; width: 100%; height: 540px; background: #fff; touch-action: none; }
+    .info { font-size: 12px; color: #555; }
+    #players { font-size: 14px; display: grid; gap: 6px; }
+    #chat { height: 320px; overflow: auto; border: 1px solid #eee; border-radius: var(--radius); padding: 10px; background: #fff; }
+    .msg { margin: 0 0 10px; }
+    .msg .meta { font-size: 12px; color: #666; }
+    .you { background: #eef7ff; padding: 6px 8px; border-radius: 8px; }
+    .word { font-weight: 700; letter-spacing: .5px; }
+    .hint { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 2px; }
+    .sep { height: 1px; background: #eee; margin: 10px 0; }
+    @media (max-width: 1024px) { .grid { grid-template-columns: 1fr; } canvas { height: 420px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <div>
+        <h1>Imagem & Ação — colaboração ao vivo (segmentos contínuos)</h1>
+        <div class="info">Abra em duas abas/dispositivos, entre na mesma sala. Um desenha, os outros adivinham pelo chat.</div>
+      </div>
+      <div class="pill" id="status">desconectado</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card controls">
+        <div class="row2">
+          <label><div>Apelido</div><input id="nick" placeholder="ex.: Alex" /></label>
+          <label><div>Sala</div><input id="room" placeholder="ex.: geral" /></label>
+        </div>
+        <div class="row2">
+          <button id="connect">Conectar</button>
+          <button id="leave" disabled>Sair</button>
+        </div>
+        <div class="sep"></div>
+        <div class="row2">
+          <button id="beDrawer" disabled>Virar desenhista</button>
+          <button id="start" disabled>Iniciar rodada</button>
+        </div>
+        <div class="row2">
+          <button id="clear" disabled>Limpar desenho</button>
+          <button id="end" disabled>Encerrar rodada</button>
+        </div>
+        <div class="sep"></div>
+        <div class="info"><strong>Palavra (só o desenhista vê):</strong> <span id="word" class="word">—</span></div>
+        <div class="info"><strong>Dica para todos:</strong> <span id="hint" class="hint">—</span></div>
+        <div class="info"><strong>Desenhista:</strong> <span id="drawerName">—</span></div>
+        <div class="info"><strong>Status:</strong> <span id="roundStatus">—</span></div>
+        <div><div class="info"><strong>Espessura:</strong></div><input id="size" type="range" min="2" max="18" value="6" /></div>
+        <div><div class="info"><strong>Cor:</strong></div><input id="color" type="color" value="#111111" /></div>
+      </section>
+
+      <section class="card" id="canvasWrap"><canvas id="c"></canvas></section>
+
+      <section class="card">
+        <div style="display:grid; gap:10px;">
+          <div><strong>Jogadores</strong></div>
+          <div id="players"></div>
+          <div class="sep"></div>
+          <div><strong>Chat / Palpites</strong></div>
+          <div id="chat" aria-live="polite" aria-busy="true"></div>
+          <form id="chatForm" style="display:grid; grid-template-columns: 1fr auto; gap: 10px; margin-top:6px;">
+            <input id="chatInput" placeholder="Digite seu palpite…" autocomplete="off" />
+            <button id="send" type="submit" disabled>Enviar</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Configuração do usuário
+    const firebaseConfig = {
+      apiKey: "AIzaSyA9FBaZDDJ_fOOWW4JNxoR_IbHCTG9CgqE",
+      authDomain: "chatenvivo-6b518.firebaseapp.com",
+      projectId: "chatenvivo-6b518",
+      storageBucket: "chatenvivo-6b518.firebasestorage.app",
+      messagingSenderId: "351680385901",
+      appId: "1:351680385901:web:8105134053b010cd69c064",
+      measurementId: "G-HF86GVYTVC"
+    };
+
+    let app, db;
+    try { app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); document.getElementById("status").textContent="SDK carregado"; }
+    catch(e){ document.getElementById("status").textContent="erro na config"; console.error(e); }
+
+    // UI refs
+    const $status = document.getElementById("status");
+    const $nick = document.getElementById("nick");
+    const $room = document.getElementById("room");
+    const $connect = document.getElementById("connect");
+    const $leave = document.getElementById("leave");
+    const $beDrawer = document.getElementById("beDrawer");
+    const $start = document.getElementById("start");
+    const $clear = document.getElementById("clear");
+    const $end = document.getElementById("end");
+    const $word = document.getElementById("word");
+    const $hint = document.getElementById("hint");
+    const $drawerName = document.getElementById("drawerName");
+    const $roundStatus = document.getElementById("roundStatus");
+    const $players = document.getElementById("players");
+    const $c = document.getElementById("c");
+    const ctx = $c.getContext("2d");
+    const $size = document.getElementById("size");
+    const $color = document.getElementById("color");
+    const $chat = document.getElementById("chat");
+    const $chatForm = document.getElementById("chatForm");
+    const $chatInput = document.getElementById("chatInput");
+    const $send = document.getElementById("send");
+
+    function getParam(name){ const params = new URLSearchParams(location.search); return params.get(name)||""; }
+    $nick.value = getParam("nick") || "";
+    $room.value = getParam("sala") || "geral";
+
+    function resizeCanvas(){
+      const rect = $c.getBoundingClientRect();
+      $c.width = Math.floor(rect.width);
+      $c.height = Math.floor(rect.height);
+    }
+    window.addEventListener("resize", resizeCanvas);
+    setTimeout(resizeCanvas,0);
+
+    let roomId="", nick="", isDrawer=false;
+    let unsubRoom=null, unsubStrokes=null, unsubGuesses=null, unsubPlayers=null;
+
+    const WORDS = ["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
+
+    // conexão
+    $connect.addEventListener("click", async () => {
+      nick = ($nick.value||"Anon").trim();
+      roomId = ($room.value||"geral").trim().toLowerCase();
+      if (!db) { alert("Firebase não configurado."); return; }
+      if (!nick) { alert("Escolha um apelido."); return; }
+      $connect.disabled=true; $leave.disabled=false; $send.disabled=false; $beDrawer.disabled=false; $status.textContent="conectado";
+      await db.collection("salas").doc(roomId).collection("players").doc(nick).set({nick, lastSeen: firebase.firestore.Timestamp.now()},{merge:true});
+      listenRoom(); listenPlayers(); listenStrokes(); listenGuesses();
+    });
+    $leave.addEventListener("click", ()=>{ if(unsubRoom)unsubRoom(); if(unsubStrokes)unsubStrokes(); if(unsubGuesses)unsubGuesses(); if(unsubPlayers)unsubPlayers();
+      $connect.disabled=false; $leave.disabled=true; $send.disabled=true; $beDrawer.disabled=true; $start.disabled=true; $clear.disabled=true; $end.disabled=true;
+      $status.textContent="desconectado"; isDrawer=false; $word.textContent="—"; $hint.textContent="—"; $drawerName.textContent="—"; $roundStatus.textContent="—";
+      ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML=""; $chat.innerHTML=""; });
+
+    async function setDrawer(n){ await db.collection("salas").doc(roomId).set({ currentDrawer: n||nick }, {merge:true}); }
+    $beDrawer.addEventListener("click", ()=> setDrawer(nick));
+
+    $start.addEventListener("click", async ()=>{
+      if (!isDrawer){ alert("Apenas o desenhista pode iniciar."); return; }
+      const word = WORDS[Math.floor(Math.random()*WORDS.length)];
+      const hint = word.replace(/[a-záéíóúãõâêîôûç]/gi," _ ");
+      const strokesRef = db.collection("salas").doc(roomId).collection("strokes");
+      const snap = await strokesRef.get(); const batch = db.batch(); snap.forEach(d=>batch.delete(d.ref)); await batch.commit();
+      await db.collection("salas").doc(roomId).set({ status:"jogando", word, hint, winner:null, startedAt: firebase.firestore.Timestamp.now() },{merge:true});
+    });
+    $end.addEventListener("click", ()=>{ if(!isDrawer) return; db.collection("salas").doc(roomId).set({status:"encerrada"},{merge:true}); });
+
+    function listenRoom(){
+      if (unsubRoom) unsubRoom();
+      unsubRoom = db.collection("salas").doc(roomId).onSnapshot(doc=>{
+        const data = doc.data()||{};
+        $drawerName.textContent = data.currentDrawer || "—";
+        $roundStatus.textContent = data.status || "—";
+        isDrawer = (data.currentDrawer===nick);
+        $word.textContent = isDrawer ? (data.word||"—") : (data.status==="jogando" ? "🔒 (secreto)" : "—");
+        $hint.textContent = data.hint || "—";
+        $start.disabled = !isDrawer; $clear.disabled=!isDrawer; $end.disabled=!isDrawer;
+      });
+    }
+    function listenPlayers(){
+      if (unsubPlayers) unsubPlayers();
+      unsubPlayers = db.collection("salas").doc(roomId).collection("players").orderBy("nick").onSnapshot(snap=>{
+        const list=[]; snap.forEach(d=>list.push(d.id)); $players.innerHTML = list.map(n=> (n===nick?"👤 ":"👥 ")+n).join("<br>");
+      });
+    }
+
+    // ======= Desenho em tempo real (segmentos) =======
+    function pos(evt){
+      const rect = $c.getBoundingClientRect();
+      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+      const x = clientX - rect.left; const y = clientY - rect.top;
+      return [ Math.max(0,Math.min(1,x/rect.width)), Math.max(0,Math.min(1,y/rect.height)) ];
+    }
+    function drawSegment(p0,p1,color,size){
+      ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size;
+      ctx.beginPath(); ctx.moveTo(p0[0]*$c.width,p0[1]*$c.height); ctx.lineTo(p1[0]*$c.width,p1[1]*$c.height); ctx.stroke();
+    }
+    function localDrawPoly(pts,color,size){ for(let i=1;i<pts.length;i++) drawSegment(pts[i-1],pts[i],color,size); }
+    async function pushStroke(pts,color,size){
+      try{
+        await db.collection("salas").doc(roomId).collection("strokes").add({
+          by:nick, pts, color, size:Number(size), ts: firebase.firestore.Timestamp.now()
+        });
+      }catch(e){ console.error("Erro ao enviar stroke:", e); }
+    }
+    function listenStrokes(){
+      if (unsubStrokes) unsubStrokes();
+      unsubStrokes = db.collection("salas").doc(roomId).collection("strokes").orderBy("ts","asc").limit(5000)
+        .onSnapshot(snap=>{
+          snap.docChanges().forEach(ch=>{
+            if (ch.type==="added"){ const s=ch.doc.data(); localDrawPoly(s.pts, s.color||"#111", s.size||6); }
+          });
+        });
+    }
+
+    let drawing=false, lastP=null;
+    function pointerDown(e){ if(!isDrawer) return; drawing=true; lastP=pos(e); e.preventDefault(); }
+    async function pointerMove(e){
+      if(!drawing||!isDrawer) return;
+      const p = pos(e);
+      // desenha local
+      localDrawPoly([lastP,p], $color.value, Number($size.value));
+      // envia segmento para o outro ver em tempo real
+      await pushStroke([lastP,p], $color.value, Number($size.value));
+      lastP = p;
+      e.preventDefault();
+    }
+    function pointerUp(e){ drawing=false; e.preventDefault(); }
+
+    $c.addEventListener("mousedown", pointerDown);
+    $c.addEventListener("mousemove", pointerMove);
+    window.addEventListener("mouseup", pointerUp);
+    $c.addEventListener("touchstart", pointerDown, {passive:false});
+    $c.addEventListener("touchmove", pointerMove, {passive:false});
+    $c.addEventListener("touchend", pointerUp);
+
+    $clear.addEventListener("click", async ()=>{
+      if(!isDrawer) return;
+      ctx.clearRect(0,0,$c.width,$c.height);
+      const ref = db.collection("salas").doc(roomId).collection("strokes");
+      const snap = await ref.get(); const batch = db.batch(); snap.forEach(d=>batch.delete(d.ref)); await batch.commit();
+    });
+
+    // ======= Chat / palpites =======
+    function addMsg({nick, text, correct}){
+      const wrap=document.createElement("div"); wrap.className="msg";
+      const meta=document.createElement("div"); meta.className="meta"; meta.textContent = nick + (correct?" acertou! 🎉":"");
+      const body=document.createElement("div"); body.textContent=text; if(nick===window.nick) body.classList.add("you");
+      wrap.append(meta,body); $chat.appendChild(wrap); $chat.scrollTop=$chat.scrollHeight;
+    }
+    function listenGuesses(){
+      if (unsubGuesses) unsubGuesses();
+      unsubGuesses = db.collection("salas").doc(roomId).collection("guesses").orderBy("ts","asc").limit(500)
+        .onSnapshot(snap=>{ snap.docChanges().forEach(ch=>{ if(ch.type==="added"){ addMsg(ch.doc.data()); } }); $chat.removeAttribute("aria-busy"); });
+    }
+    function normalize(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim(); }
+    $chatForm.addEventListener("submit", async (e)=>{
+      e.preventDefault(); if(!$chatInput.value.trim()) return;
+      const text=$chatInput.value.trim(); $chatInput.value="";
+      const roomDoc = await db.collection("salas").doc(roomId).get(); const data=roomDoc.data()||{};
+      const correct = (data.status==="jogando") && normalize(text)===normalize(data.word);
+      await db.collection("salas").doc(roomId).collection("guesses").add({ nick, text, correct:!!correct, ts: firebase.firestore.Timestamp.now() });
+      if (correct){ await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:nick }, {merge:true}); }
+    });
+
+    $c.addEventListener("contextmenu", e=>e.preventDefault());
+    window.addEventListener("load", resizeCanvas);
+  </script>
+</body>
+</html>

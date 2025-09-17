@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Imagem & Ação — V2 (lógica com rotação + timer)</title>
+  <title>Imagem & Ação — V3 (iniciar jogo, timer em ambos, terminar rodada)</title>
   <style>
     :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
     * { box-sizing: border-box; }
@@ -40,8 +40,8 @@
   <header>
     <div class="row">
       <div>
-        <h1>Imagem & Ação — V2</h1>
-        <div class="info">Iniciar rodada = vira desenhista. Apenas o desenhista desenha. 2 min de rodada, rotação automática.</div>
+        <h1>Imagem & Ação — V3</h1>
+        <div class="info">“Iniciar jogo” define o primeiro desenhista; só ele desenha. Timer de 2 min em ambas as telas. Dá para “Terminar rodada”.</div>
       </div>
       <div class="pill" id="status">desconectado</div>
     </div>
@@ -63,15 +63,19 @@
         </div>
 
         <div class="row2">
-          <button id="connect">Conectar</button>
-          <button id="leave" disabled>Sair</button>
+          <button id="connect" type="button">Conectar</button>
+          <button id="leave" type="button" disabled>Sair</button>
         </div>
 
         <div class="sep"></div>
 
         <div class="row2">
-          <button id="start" disabled>Iniciar rodada</button>
-          <button id="clear" disabled>Limpar desenho</button>
+          <button id="startGame" type="button" disabled>Iniciar jogo</button>
+          <button id="endRound" type="button" disabled>Terminar rodada</button>
+        </div>
+
+        <div class="row2">
+          <button id="clear" type="button" disabled>Limpar desenho</button>
         </div>
 
         <div class="sep"></div>
@@ -145,7 +149,8 @@
     const $room = document.getElementById("room");
     const $connect = document.getElementById("connect");
     const $leave = document.getElementById("leave");
-    const $start = document.getElementById("start");
+    const $startGame = document.getElementById("startGame");
+    const $endRound = document.getElementById("endRound");
     const $clear = document.getElementById("clear");
     const $word = document.getElementById("word");
     const $hint = document.getElementById("hint");
@@ -202,7 +207,7 @@
       $connect.disabled = true;
       $leave.disabled = false;
       $send.disabled = false;
-      $start.disabled = false; // qualquer um pode iniciar a 1ª rodada
+      $startGame.disabled = false; // só dispara manualmente
       $status.textContent = "conectado";
 
       const playerRef = db.collection("salas").doc(roomId).collection("players").doc(nick);
@@ -219,7 +224,8 @@
       $connect.disabled = false;
       $leave.disabled = true;
       $send.disabled = true;
-      $start.disabled = true;
+      $startGame.disabled = true;
+      $endRound.disabled = true;
       $clear.disabled = true;
       $status.textContent = "desconectado";
       isDrawer = false;
@@ -272,24 +278,26 @@
         $hint.textContent = data.hint || "—";
 
         // Botões habilitados
-        $start.disabled = gameStatus === "jogando"; // só permite iniciar quando não estiver jogando
-        $clear.disabled = !(isDrawer && gameStatus === "jogando");
+        $startGame.disabled = (gameStatus === "jogando"); // não auto-inicia nunca
+        const drawerAndPlaying = (isDrawer && gameStatus === "jogando");
+        $clear.disabled = !drawerAndPlaying;
+        $endRound.disabled = !drawerAndPlaying;
 
-        // Timer
+        // Timer (mostrado para todos)
         if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
         if (gameStatus === "jogando" && data.deadlineMillis) {
-          countdownInt = setInterval(async () => {
+          const updateTimer = async () => {
             const left = Math.max(0, data.deadlineMillis - Date.now());
             const mm = String(Math.floor(left/60000)).padStart(2,"0");
             const ss = String(Math.floor((left%60000)/1000)).padStart(2,"0");
             $timer.textContent = mm+":"+ss;
             if (left <= 0) {
               clearInterval(countdownInt); countdownInt=null;
-              if (isDrawer) { // só o desenhista avança
-                await advanceTurn("timeout");
-              }
+              if (isDrawer) { await advanceTurn("timeout"); }
             }
-          }, 300);
+          };
+          updateTimer();
+          countdownInt = setInterval(updateTimer, 300);
         } else {
           $timer.textContent = "—";
         }
@@ -302,7 +310,7 @@
     }
 
     async function advanceTurn(reason) {
-      // Decide próximo desenhista na ordem de entrada
+      // Próximo desenhista na ordem de entrada
       if (!playersList.length) return;
       const current = $drawerName.textContent;
       const idx = Math.max(0, playersList.indexOf(current));
@@ -316,7 +324,6 @@
       unsubPlayers = ref.orderBy("joinedAt").onSnapshot(snap => {
         const list = [];
         snap.forEach(d => list.push(d.id));
-        // fallback: se não há joinedAt (primeiros segundos), ordena por nome
         playersList = list.length ? list : snap.docs.map(d=>d.id).sort();
         $players.innerHTML = playersList.map(n => (n===nick? "👤 " : "👥 ") + n).join("<br>");
       });
@@ -443,14 +450,20 @@
       }
     });
 
-    // ========= Iniciar rodada (quem clica vira desenhista) =========
-    $start.addEventListener("click", async () => {
-      // Só pode iniciar se não há rodada em andamento
+    // ========= Iniciar JOGO (quem clica vira o 1º desenhista) =========
+    $startGame.addEventListener("click", async () => {
       const roomRef = db.collection("salas").doc(roomId);
       const snap = await roomRef.get();
       const status = snap.exists ? snap.data().status : null;
       if (status === "jogando") return alert("Já existe uma rodada em andamento.");
-      await startRound(nick);
+      await startRound(nick); // começa com quem clicou
+    });
+
+    // ========= Terminar rodada (desistir/passar) =========
+    $endRound.addEventListener("click", async () => {
+      if (!isDrawer || gameStatus !== "jogando") return;
+      await db.collection("salas").doc(roomId).set({ status: "encerrada", winner: null }, { merge: true });
+      // listenRoom detecta encerramento e chama advanceTurn() no desenhista
     });
 
     // Desabilitar menu do botão direito

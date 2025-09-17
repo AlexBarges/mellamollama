@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Imagem & Ação — V9 (desenho persistente + chat por rodada)</title>
+<title>Imagem & Ação — V10</title>
 <style>
   :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
   *{box-sizing:border-box}
@@ -39,8 +39,8 @@
 <header>
   <div class="row">
     <div>
-      <h1>Imagem & Ação — V9</h1>
-      <div class="info">Desenho persiste; chat limpa a cada rodada. “Iniciar jogo” faz de quem clicou o desenhista.</div>
+      <h1>Imagem & Ação — V10</h1>
+      <div class="info">Traço suave (Pointer Events + Hi-DPI), chat por rodada e timer visível para todos.</div>
     </div>
     <div class="pill" id="status">desconectado</div>
   </div>
@@ -144,15 +144,24 @@ let unsubRoom=null, unsubState=null, unsubGuesses=null, unsubPlayers=null;
 let heartbeatInt=null, countdownInt=null;
 let gameStatus="—", playersList=[];
 let currentRound=0;
-let lastClearedAt=0; // <<< evita limpar o canvas repetidamente
+let lastClearedAt=0;
 
+/* ---------- Util ---------- */
 const WORDS=["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
 const pickWord = ()=> WORDS[Math.floor(Math.random()*WORDS.length)];
 const makeHint = w => w.replace(/[a-záéíóúãõâêîôûç]/gi," _ ");
+const normalize=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
 
-/* ---------- Canvas size ---------- */
-function resizeCanvas(){ const r=$c.getBoundingClientRect(); $c.width=Math.floor(r.width); $c.height=Math.floor(r.height); }
-window.addEventListener("resize",resizeCanvas); setTimeout(resizeCanvas,0);
+/* ---------- Canvas size (Hi-DPI) ---------- */
+let dpr = Math.max(1, window.devicePixelRatio || 1);
+function resizeCanvas(){
+  const r=$c.getBoundingClientRect();
+  $c.width = Math.floor(r.width * dpr);
+  $c.height = Math.floor(r.height * dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0); // desenhamos em coordenadas CSS
+}
+window.addEventListener("resize",()=>{ dpr=Math.max(1,window.devicePixelRatio||1); resizeCanvas(); });
+setTimeout(resizeCanvas,0);
 
 /* ---------- Connect ---------- */
 $connect.addEventListener("click", async ()=>{
@@ -168,7 +177,7 @@ $connect.addEventListener("click", async ()=>{
   heartbeatInt=setInterval(()=>playerRef.set({online:true,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}),5000);
   window.addEventListener("beforeunload",()=>{try{playerRef.set({online:false,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch{};});
 
-  listenRoom(); listenPlayers(); listenState(); // guesses será ligado quando soubermos o round
+  listenRoom(); listenPlayers(); listenState();
 });
 
 /* ---------- Leave ---------- */
@@ -182,23 +191,22 @@ $leave.addEventListener("click",()=>{
   ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML=""; $chat.innerHTML="";
 });
 
-/* ---------- START: local-first ---------- */
+/* ---------- START (local-first) ---------- */
 async function startNow() {
   if(!roomId||!nick) return;
   if(gameStatus==="jogando") return; // silencioso
 
-  // 1) UI local
-  const w = pickWord(); const h = makeHint(w);
+  // 1) UI local imediata
+  const w = pickWord(), h = makeHint(w);
   isDrawer=true; gameStatus="jogando";
   $drawerName.textContent=nick; $roundStatus.textContent="jogando";
   $word.textContent=w; $hint.textContent=h;
   $clear.disabled=false; $endRound.disabled=true;
 
-  // timer local
+  // timer local (vai sincronizar pelo snapshot)
   if(countdownInt){clearInterval(countdownInt)} const localDeadline=Date.now()+120000;
   const t=()=>{const left=Math.max(0,localDeadline-Date.now()); const mm=String(Math.floor(left/60000)).padStart(2,"0"); const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0"); $timer.textContent=`${mm}:${ss}`}; t(); countdownInt=setInterval(t,300);
 
-  // limpa canvas local
   ctx.clearRect(0,0,$c.width,$c.height);
 
   try{
@@ -212,13 +220,11 @@ async function startNow() {
 
     await roomRef.set({
       currentDrawer:nick,status:"jogando",word:w,hint:h,winner:null,
-      round:newRound, startAt:firebase.firestore.FieldValue.serverTimestamp(), durationSec:120
+      round:newRound,startAt:firebase.firestore.FieldValue.serverTimestamp(),durationSec:120
     },{merge:true});
 
-    // fixa round atual e limpa chat desta UI
     currentRound = newRound;
-    bindGuessesForRound(currentRound);
-
+    bindGuessesForRound(currentRound); // chat da rodada
     $endRound.disabled=false;
   }catch(e){
     console.error(e);
@@ -236,12 +242,12 @@ $endRound.addEventListener("click", async ()=>{
   await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true});
 });
 
-/* ---------- Sala / Timer global / Rodadas ---------- */
+/* ---------- Sala / Timer ---------- */
 function listenRoom(){
   if(unsubRoom)unsubRoom();
   const roomRef=db.collection("salas").doc(roomId);
-
   let lastStatus="—";
+
   unsubRoom=roomRef.onSnapshot(doc=>{
     const data=doc.data()||{};
     gameStatus=data.status||"—";
@@ -249,12 +255,9 @@ function listenRoom(){
     isDrawer=(drawer===nick);
     $drawerName.textContent=drawer; $roundStatus.textContent=gameStatus;
 
-    // round mudou? rebind do chat
-    const r = data.round || 0;
-    if (r !== currentRound) {
-      currentRound = r;
-      bindGuessesForRound(currentRound); // limpa e mostra só a rodada atual
-    }
+    // round -> rebind chat (e limpa)
+    const r=data.round||0;
+    if(r!==currentRound){ currentRound=r; bindGuessesForRound(currentRound); }
 
     if(gameStatus==="jogando"){
       $word.textContent=isDrawer?(data.word||"—"):"🔒 (secreto)";
@@ -262,33 +265,30 @@ function listenRoom(){
       $clear.disabled=isDrawer; $endRound.disabled=!isDrawer;
 
       if(countdownInt){clearInterval(countdownInt);countdownInt=null}
-      if(data.startAt&&data.startAt.toMillis){
-        const startMs=data.startAt.toMillis(); const durMs=1000*(data.durationSec||120); const deadline=startMs+durMs;
-        const tick=async()=>{
-          const left=Math.max(0,deadline-Date.now());
-          const mm=String(Math.floor(left/60000)).padStart(2,"0");
-          const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0");
-          $timer.textContent=`${mm}:${ss}`;
-          if(left<=0){
-            clearInterval(countdownInt); countdownInt=null;
-            if(isDrawer){ await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true}); }
-          }
-        };
-        tick(); countdownInt=setInterval(tick,300);
-      }
+      // usa startAt do servidor; se não chegou ainda, faz fallback por 2min a partir de agora
+      let startMs = Date.now();
+      if(data.startAt && data.startAt.toMillis) startMs = data.startAt.toMillis();
+      const durMs = 1000 * (data.durationSec || 120);
+      const deadline = startMs + durMs;
+
+      const tick = async ()=>{
+        const left=Math.max(0,deadline-Date.now());
+        const mm=String(Math.floor(left/60000)).padStart(2,"0");
+        const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0");
+        $timer.textContent=`${mm}:${ss}`;
+        if(left<=0){
+          clearInterval(countdownInt); countdownInt=null;
+          if(isDrawer){ await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true}); }
+        }
+      };
+      tick(); countdownInt=setInterval(tick,300);
     } else {
       if(countdownInt){clearInterval(countdownInt);countdownInt=null}
-      $timer.textContent="—";
-      $word.textContent="—"; $hint.textContent="—";
+      $timer.textContent="—"; $word.textContent="—"; $hint.textContent="—";
       $clear.disabled=true; $endRound.disabled=true;
-
-      // se acabou de sair de "jogando" -> limpa chat imediatamente
-      if (lastStatus === "jogando") {
-        $chat.innerHTML = "";
-      }
+      if(lastStatus==="jogando"){ $chat.innerHTML=""; } // limpa ao encerrar
     }
-
-    lastStatus = gameStatus;
+    lastStatus=gameStatus;
   });
 }
 
@@ -308,68 +308,64 @@ function listenPlayers(){
   });
 }
 
-/* ---------- Espelho do desenho (clear só quando mudar!) ---------- */
+/* ---------- Espelho do desenho (clear só quando mudar) ---------- */
 function listenState(){
   if(unsubState)unsubState();
   const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
   unsubState=ref.onSnapshot(doc=>{
     const data=doc.data()||{};
-
-    // LIMPAR SÓ SE O clearedAt MUDAR
-    let cur = 0;
-    if (data.clearedAt && data.clearedAt.toMillis) cur = data.clearedAt.toMillis();
-    else if (typeof data.clearedAt === "number") cur = data.clearedAt;
-    if (cur && cur !== lastClearedAt) {
-      lastClearedAt = cur;
-      ctx.clearRect(0,0,$c.width,$c.height);
-    }
-
-    const s=data.lastSeg;
-    if(s && s.by!==nick) drawSeg(s.p0,s.p1,s.color||"#111",s.size||6);
+    let cur=0;
+    if(data.clearedAt && data.clearedAt.toMillis) cur=data.clearedAt.toMillis();
+    else if(typeof data.clearedAt==="number") cur=data.clearedAt;
+    if(cur && cur!==lastClearedAt){ lastClearedAt=cur; ctx.clearRect(0,0,$c.width,$c.height); }
+    const s=data.lastSeg; if(s && s.by!==nick) drawSeg(s.p0,s.p1,s.color||"#111",s.size||6);
   });
 }
 
-/* ---------- Desenho ---------- */
-function pos(e){ const r=$c.getBoundingClientRect(); const X=e.touches?e.touches[0].clientX:e.clientX; const Y=e.touches?e.touches[0].clientY:e.clientY; return [Math.max(0,Math.min(1,(X-r.left)/r.width)),Math.max(0,Math.min(1,(Y-r.top)/r.height))];}
-function drawSeg(p0,p1,color,size){ ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size; ctx.beginPath(); ctx.moveTo(p0[0]*$c.width,p0[1]*$c.height); ctx.lineTo(p1[0]*$c.width,p1[1]*$c.height); ctx.stroke(); }
+/* ---------- Desenho (Pointer Events + Hi-DPI) ---------- */
+function cssPos(e){ const r=$c.getBoundingClientRect(); const X=e.clientX; const Y=e.clientY; return [Math.max(0,Math.min(1,(X-r.left)/r.width)), Math.max(0,Math.min(1,(Y-r.top)/r.height))]; }
+function drawSeg(p0,p1,color,size){ ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size; ctx.beginPath(); ctx.moveTo(p0[0]*$c.width/dpr,p0[1]*$c.height/dpr); ctx.lineTo(p1[0]*$c.width/dpr,p1[1]*$c.height/dpr); ctx.stroke(); }
 async function pushSeg(p0,p1,color,size){
   const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
   await ref.set({lastSeg:{by:nick,p0,p1,color,size:Number(size),ts:firebase.firestore.FieldValue.serverTimestamp()}},{merge:true});
 }
-let drawing=false,last=null; const canDraw=()=> isDrawer && gameStatus==="jogando";
-$c.addEventListener("mousedown",e=>{ if(!canDraw())return; drawing=true; last=pos(e); e.preventDefault(); });
-$c.addEventListener("mousemove",async e=>{ if(!drawing||!canDraw())return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); });
-window.addEventListener("mouseup",()=>{ drawing=false; });
-$c.addEventListener("touchstart",e=>{ if(!canDraw())return; drawing=true; last=pos(e); e.preventDefault(); },{passive:false});
-$c.addEventListener("touchmove",async e=>{ if(!drawing||!canDraw())return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); },{passive:false});
-$c.addEventListener("touchend",()=>{ drawing=false; });
+let drawing=false,last=null;
+const canDraw=()=> isDrawer && gameStatus==="jogando";
+
+// Pointer Events (evita mouse+touch duplicados)
+$c.addEventListener("pointerdown",e=>{ if(!canDraw())return; drawing=true; $c.setPointerCapture(e.pointerId); last=cssPos(e); e.preventDefault(); });
+$c.addEventListener("pointermove",async e=>{ if(!drawing||!canDraw())return; const p=cssPos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); });
+$c.addEventListener("pointerup",e=>{ drawing=false; try{$c.releasePointerCapture(e.pointerId);}catch{} });
+$c.addEventListener("pointercancel",()=>{ drawing=false; });
 $clear.addEventListener("click",async()=>{ if(!canDraw())return; ctx.clearRect(0,0,$c.width,$c.height); const ref=db.collection("salas").doc(roomId).collection("sync").doc("state"); await ref.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); });
 $c.addEventListener("contextmenu",e=>e.preventDefault());
 
-/* ---------- Chat (por rodada) ---------- */
+/* ---------- Chat (filtrado por rodada no cliente) ---------- */
 function addMsg({nick,text,correct}){ const w=document.createElement("div"); w.className="msg"; const m=document.createElement("div"); m.className="meta"; m.textContent=nick+(correct?" acertou! 🎉":""); const b=document.createElement("div"); b.textContent=text; w.append(m,b); $chat.appendChild(w); $chat.scrollTop=$chat.scrollHeight; }
 
 function bindGuessesForRound(round){
   if(unsubGuesses){unsubGuesses();unsubGuesses=null;}
-  $chat.innerHTML=""; // limpa visualmente a cada nova rodada
-  let q = db.collection("salas").doc(roomId).collection("guesses");
-  if (round) q = q.where("round","==", round);
-  unsubGuesses = q.orderBy("ts","asc").limit(500).onSnapshot(s=>{
-    s.docChanges().forEach(ch=>{ if(ch.type==="added") addMsg(ch.doc.data()); });
-    $chat.removeAttribute("aria-busy");
-  });
+  $chat.innerHTML=""; // limpa visual
+  unsubGuesses = db.collection("salas").doc(roomId).collection("guesses")
+    .orderBy("ts","asc").limit(500)
+    .onSnapshot(s=>{
+      s.docChanges().forEach(ch=>{
+        if(ch.type!=="added") return;
+        const d=ch.doc.data()||{};
+        if((d.round||0)!==round) return;   // filtro no cliente (sem índice)
+        addMsg(d);
+      });
+      $chat.removeAttribute("aria-busy");
+    });
 }
 
-const normalize=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
 $chatForm.addEventListener("submit",async e=>{
   e.preventDefault(); if(!$chatInput.value.trim())return;
   const text=$chatInput.value.trim(); $chatInput.value="";
   const roomDoc=await db.collection("salas").doc(roomId).get(); const data=roomDoc.data()||{};
   const correct=(data.status==="jogando") && normalize(text)===normalize(data.word);
-  const r = data.round || currentRound || 0;
-  await db.collection("salas").doc(roomId).collection("guesses").add({
-    nick,text,correct:!!correct,round:r,ts:firebase.firestore.FieldValue.serverTimestamp()
-  });
+  const r=data.round||currentRound||0;
+  await db.collection("salas").doc(roomId).collection("guesses").add({ nick,text,correct:!!correct,round:r,ts:firebase.firestore.FieldValue.serverTimestamp() });
   if(correct) await db.collection("salas").doc(roomId).set({status:"encerrada",winner:nick},{merge:true});
 });
 </script>

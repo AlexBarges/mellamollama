@@ -3,35 +3,80 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Imagem & Ação — V10</title>
+<title>Imagem & Ação — V11</title>
 <style>
-  :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
+  :root{
+    --gap:12px; --radius:18px;
+    --ink:#000; --bg:#fffbef;
+    --accent:#ffd400;        /* amarelo chapado */
+    --accent2:#43d3ff;       /* ciano chapado */
+    --hotpink:#ff2ebd;       /* rosa forte (nomes no chat) */
+    --card:#ffffff;
+    --dark:#000000;
+  }
   *{box-sizing:border-box}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f7f7f8;color:#111}
-  header{position:sticky;top:0;background:#fff;box-shadow:var(--shadow);padding:14px 18px;z-index:10}
-  header h1{font-size:18px;margin:0 0 6px}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:var(--bg);color:#111}
+  header{position:sticky;top:0;background:var(--card);padding:12px 16px;z-index:10;border-bottom:4px solid var(--ink)}
+  header h1{font-size:18px;margin:0 0 4px}
   header .row{display:grid;grid-template-columns:1fr auto;gap:var(--gap);align-items:center}
-  .pill{font-size:12px;background:#111;color:#fff;padding:4px 10px;border-radius:999px}
-  main{max-width:1100px;margin:22px auto;padding:0 16px;display:grid;gap:var(--gap)}
-  .grid{display:grid;grid-template-columns:300px 1fr 320px;gap:var(--gap);align-items:start}
-  .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+  .pill{font-size:12px;background:var(--dark);color:#fff;padding:4px 10px;border-radius:999px;border:3px solid var(--ink)}
+  main{max-width:1100px;margin:20px auto;padding:0 16px;display:grid;gap:var(--gap)}
+  .grid{display:grid;grid-template-columns:280px 1fr 320px;gap:var(--gap);align-items:start}
+  .card{background:var(--card);border:4px solid var(--ink);border-radius:22px;padding:12px}
   label{display:grid;gap:6px;font-size:14px}
-  input,button{font:inherit;padding:10px 12px;border-radius:10px;border:1px solid #ddd}
-  button{cursor:pointer;border:0;background:#111;color:#fff}
+
+  /* Botões menores + chapados + borda preta grossa */
+  button,input,select{font:inherit}
+  button{cursor:pointer;border:4px solid var(--ink);border-radius:12px;padding:6px 10px;font-weight:700}
   button:disabled{opacity:.5;cursor:not-allowed}
+  .btn-yellow{background:var(--accent)}
+  .btn-cyan{background:var(--accent2)}
+  .btn-dark{background:#222;color:#fff}
+
   .controls{display:grid;gap:var(--gap)}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
-  #canvasWrap{border:1px solid #eee;border-radius:var(--radius);overflow:hidden;background:#fff}
+
+  /* Lousa */
+  #canvasWrap{position:relative;background:#fff;border:6px solid var(--ink);border-radius:26px;overflow:hidden}
   canvas{display:block;width:100%;height:540px;background:#fff;touch-action:none}
-  .info{font-size:12px;color:#555}
+  /* Timer grande no topo da lousa */
+  #timerHUD{
+    position:absolute;left:50%;top:8px;transform:translateX(-50%);
+    background:var(--accent);border:4px solid var(--ink);border-radius:999px;
+    padding:6px 14px;font-weight:900;font-size:28px;letter-spacing:1px;
+  }
+  /* Overlay de fim/acerto */
+  #overlay{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.85); /* leve véu */
+  }
+  #overlay .msg{
+    text-align:center;font-weight:900;line-height:1.1;
+    color:#111;background:#fff;border:6px solid var(--ink);border-radius:24px;
+    padding:22px 26px;max-width:90%;
+    font-size:36px; text-transform:uppercase;
+  }
+
+  .info{font-size:12px;color:#333}
   #players{font-size:14px;display:grid;gap:6px}
-  #chat{height:320px;overflow:auto;border:1px solid #eee;border-radius:var(--radius);padding:10px;background:#fff}
-  .msg{margin:0 0 10px}
-  .msg .meta{font-size:12px;color:#666}
-  .word{font-weight:700;letter-spacing:.5px}
-  .hint{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:2px}
-  .sep{height:1px;background:#eee;margin:10px 0}
-  .timer{font-weight:700}
+
+  /* Chat estilo “cartoon”: fundo preto, texto branco, nomes rosa ao lado */
+  #chat{height:340px;overflow:auto;background:#000;color:#fff;
+        border:6px solid var(--ink);border-radius:18px;padding:10px}
+  .chat-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+  .chat-name{color:var(--hotpink);font-weight:900;min-width:90px;text-align:right}
+  .chat-text{
+    background:#111;color:#fff;border:4px solid var(--ink);border-radius:12px;
+    padding:6px 10px;max-width:100%;word-wrap:break-word
+  }
+  .chat-correct{background:#12c94c !important;color:#000}
+
+  .word{font-weight:800;letter-spacing:.5px}
+  .hint{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:2px}
+  .sep{height:1px;background:#000;margin:8px 0;opacity:.15}
+  .timer{font-weight:800}
+  input[type="text"], input[type="color"], input[type="range"]{border:4px solid var(--ink);border-radius:10px;padding:6px}
+
   @media (max-width:1024px){.grid{grid-template-columns:1fr} canvas{height:420px}}
 </style>
 </head>
@@ -39,8 +84,8 @@
 <header>
   <div class="row">
     <div>
-      <h1>Imagem & Ação — V10</h1>
-      <div class="info">Traço suave (Pointer Events + Hi-DPI), chat por rodada e timer visível para todos.</div>
+      <h1>Imagem & Ação — V11</h1>
+      <div class="info">Bordas pretas grossas, cores chapadas, timer na lousa, overlay de fim, chat estilizado.</div>
     </div>
     <div class="pill" id="status">desconectado</div>
   </div>
@@ -48,22 +93,23 @@
 
 <main>
   <div class="grid">
+    <!-- CONTROLES -->
     <section class="card controls">
       <div class="row2">
         <label><div>Apelido</div><input id="nick" placeholder="ex.: Alex"></label>
         <label><div>Sala</div><input id="room" placeholder="ex.: geral"></label>
       </div>
       <div class="row2">
-        <button id="connect">Conectar</button>
-        <button id="leave" disabled>Sair</button>
+        <button id="connect" class="btn-cyan">Conectar</button>
+        <button id="leave" class="btn-dark" disabled>Sair</button>
       </div>
       <div class="sep"></div>
       <div class="row2">
-        <button id="startGame" disabled>Iniciar jogo</button>
-        <button id="endRound" disabled>Terminar rodada</button>
+        <button id="startGame" class="btn-yellow" disabled>Iniciar jogo</button>
+        <button id="endRound" class="btn-dark" disabled>Terminar rodada</button>
       </div>
       <div class="row2">
-        <button id="clear" disabled>Limpar desenho</button>
+        <button id="clear" class="btn-yellow" disabled>Limpar desenho</button>
       </div>
       <div class="sep"></div>
       <div>
@@ -78,8 +124,14 @@
       <div><div class="info"><strong>Cor:</strong></div><input id="color" type="color" value="#111111"></div>
     </section>
 
-    <section class="card" id="canvasWrap"><canvas id="c"></canvas></section>
+    <!-- LOUSA -->
+    <section class="card" id="canvasWrap">
+      <div id="timerHUD">--:--</div>
+      <div id="overlay"><div class="msg"></div></div>
+      <canvas id="c"></canvas>
+    </section>
 
+    <!-- CHAT -->
     <section class="card">
       <div style="display:grid;gap:10px;">
         <div><strong>Jogadores</strong></div>
@@ -88,14 +140,15 @@
         <div><strong>Chat / Palpites</strong></div>
         <div id="chat" aria-live="polite" aria-busy="true"></div>
         <form id="chatForm" style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:6px;">
-          <input id="chatInput" placeholder="Digite seu palpite…" autocomplete="off">
-          <button id="send" type="submit" disabled>Enviar</button>
+          <input id="chatInput" placeholder="Digite seu palpite…" autocomplete="off" style="border:4px solid var(--ink);border-radius:12px;padding:8px">
+          <button id="send" type="submit" class="btn-cyan" disabled>Enviar</button>
         </form>
       </div>
     </section>
   </div>
 </main>
 
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
@@ -110,55 +163,59 @@ const firebaseConfig = {
   measurementId: "G-HF86GVYTVC"
 };
 let app, db;
-try { app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); document.getElementById("status").textContent="SDK carregado"; }
+try { app=firebase.initializeApp(firebaseConfig); db=firebase.firestore(); document.getElementById("status").textContent="SDK carregado"; }
 catch(e){ document.getElementById("status").textContent="erro na config"; console.error(e); }
 
 /* ---------- Elements & State ---------- */
-const $status = document.getElementById("status");
-const $nick = document.getElementById("nick");
-const $room = document.getElementById("room");
-const $connect = document.getElementById("connect");
-const $leave = document.getElementById("leave");
-const $startGame = document.getElementById("startGame");
-const $endRound = document.getElementById("endRound");
-const $clear = document.getElementById("clear");
-const $word = document.getElementById("word");
-const $hint = document.getElementById("hint");
-const $drawerName = document.getElementById("drawerName");
-const $roundStatus = document.getElementById("roundStatus");
-const $timer = document.getElementById("timer");
-const $players = document.getElementById("players");
+const $status=document.getElementById("status");
+const $nick=document.getElementById("nick");
+const $room=document.getElementById("room");
+const $connect=document.getElementById("connect");
+const $leave=document.getElementById("leave");
+const $startGame=document.getElementById("startGame");
+const $endRound=document.getElementById("endRound");
+const $clear=document.getElementById("clear");
+const $word=document.getElementById("word");
+const $hint=document.getElementById("hint");
+const $drawerName=document.getElementById("drawerName");
+const $roundStatus=document.getElementById("roundStatus");
+const $timer=document.getElementById("timer");
+const $players=document.getElementById("players");
+const $timerHUD=document.getElementById("timerHUD");
+const $overlay=document.getElementById("overlay");
+const $overlayMsg=$overlay.querySelector(".msg");
 
-const $c = document.getElementById("c");
-const ctx = $c.getContext("2d");
-const $size = document.getElementById("size");
-const $color = document.getElementById("color");
+const $c=document.getElementById("c");
+const ctx=$c.getContext("2d");
+const $size=document.getElementById("size");
+const $color=document.getElementById("color");
 
-const $chat = document.getElementById("chat");
-const $chatForm = document.getElementById("chatForm");
-const $chatInput = document.getElementById("chatInput");
-const $send = document.getElementById("send");
+const $chat=document.getElementById("chat");
+const $chatForm=document.getElementById("chatForm");
+const $chatInput=document.getElementById("chatInput");
+const $send=document.getElementById("send");
 
 let roomId="", nick="", isDrawer=false;
 let unsubRoom=null, unsubState=null, unsubGuesses=null, unsubPlayers=null;
 let heartbeatInt=null, countdownInt=null;
 let gameStatus="—", playersList=[];
-let currentRound=0;
-let lastClearedAt=0;
+let currentRound=0, lastClearedAt=0;
+let lastWinner=null, lastWord=null;
 
 /* ---------- Util ---------- */
 const WORDS=["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
 const pickWord = ()=> WORDS[Math.floor(Math.random()*WORDS.length)];
 const makeHint = w => w.replace(/[a-záéíóúãõâêîôûç]/gi," _ ");
 const normalize=s=>(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
+function showOverlay(msg){ $overlayMsg.textContent=msg; $overlay.style.display="flex"; }
+function hideOverlay(){ $overlay.style.display="none"; $overlayMsg.textContent=""; }
 
 /* ---------- Canvas size (Hi-DPI) ---------- */
-let dpr = Math.max(1, window.devicePixelRatio || 1);
+let dpr=Math.max(1,window.devicePixelRatio||1);
 function resizeCanvas(){
   const r=$c.getBoundingClientRect();
-  $c.width = Math.floor(r.width * dpr);
-  $c.height = Math.floor(r.height * dpr);
-  ctx.setTransform(dpr,0,0,dpr,0,0); // desenhamos em coordenadas CSS
+  $c.width=Math.floor(r.width*dpr); $c.height=Math.floor(r.height*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 window.addEventListener("resize",()=>{ dpr=Math.max(1,window.devicePixelRatio||1); resizeCanvas(); });
 setTimeout(resizeCanvas,0);
@@ -167,12 +224,13 @@ setTimeout(resizeCanvas,0);
 $connect.addEventListener("click", async ()=>{
   nick=($nick.value||"Anon").trim();
   roomId=($room.value||"geral").trim().toLowerCase();
-  if(!db) return alert("Firebase não configurado."); if(!nick) return alert("Escolha um apelido.");
+  if(!db) return alert("Firebase não configurado.");
+  if(!nick) return alert("Escolha um apelido.");
 
   $connect.disabled=true; $leave.disabled=false; $send.disabled=false; $startGame.disabled=false;
   $status.textContent="conectado";
 
-  const playerRef = db.collection("salas").doc(roomId).collection("players").doc(nick);
+  const playerRef=db.collection("salas").doc(roomId).collection("players").doc(nick);
   await playerRef.set({nick,online:true,joinedAt:firebase.firestore.FieldValue.serverTimestamp(),lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
   heartbeatInt=setInterval(()=>playerRef.set({online:true,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}),5000);
   window.addEventListener("beforeunload",()=>{try{playerRef.set({online:false,lastSeen:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})}catch{};});
@@ -186,50 +244,48 @@ $leave.addEventListener("click",()=>{
   if(heartbeatInt){clearInterval(heartbeatInt);heartbeatInt=null}
   if(countdownInt){clearInterval(countdownInt);countdownInt=null}
   $connect.disabled=false; $leave.disabled=true; $send.disabled=true; $startGame.disabled=true; $endRound.disabled=true; $clear.disabled=true;
-  $status.textContent="desconectado"; isDrawer=false; gameStatus="—"; currentRound=0; lastClearedAt=0;
+  $status.textContent="desconectado"; isDrawer=false; gameStatus="—"; currentRound=0; lastClearedAt=0; lastWinner=null; lastWord=null;
   $word.textContent=$hint.textContent=$drawerName.textContent=$roundStatus.textContent=$timer.textContent="—";
+  $timerHUD.textContent="--:--"; hideOverlay();
   ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML=""; $chat.innerHTML="";
 });
 
 /* ---------- START (local-first) ---------- */
-async function startNow() {
+async function startNow(){
   if(!roomId||!nick) return;
-  if(gameStatus==="jogando") return; // silencioso
+  if(gameStatus==="jogando") return;
 
-  // 1) UI local imediata
-  const w = pickWord(), h = makeHint(w);
-  isDrawer=true; gameStatus="jogando";
+  const w=pickWord(), h=makeHint(w);
+  isDrawer=true; gameStatus="jogando"; lastWinner=null; lastWord=w;
   $drawerName.textContent=nick; $roundStatus.textContent="jogando";
-  $word.textContent=w; $hint.textContent=h;
+  $word.textContent=w; $hint.textContent=h; hideOverlay();
   $clear.disabled=false; $endRound.disabled=true;
 
-  // timer local (vai sincronizar pelo snapshot)
-  if(countdownInt){clearInterval(countdownInt)} const localDeadline=Date.now()+120000;
-  const t=()=>{const left=Math.max(0,localDeadline-Date.now()); const mm=String(Math.floor(left/60000)).padStart(2,"0"); const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0"); $timer.textContent=`${mm}:${ss}`}; t(); countdownInt=setInterval(t,300);
+  if(countdownInt){clearInterval(countdownInt)}
+  const localDeadline=Date.now()+120000;
+  const t=()=>{const left=Math.max(0,localDeadline-Date.now()); const mm=String(Math.floor(left/60000)).padStart(2,"0"); const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0"); $timer.textContent=`${mm}:${ss}`; $timerHUD.textContent=`${mm}:${ss}`}; t(); countdownInt=setInterval(t,300);
 
   ctx.clearRect(0,0,$c.width,$c.height);
 
   try{
-    const roomRef = db.collection("salas").doc(roomId);
-    const stateRef = roomRef.collection("sync").doc("state");
-
+    const roomRef=db.collection("salas").doc(roomId);
+    const stateRef=roomRef.collection("sync").doc("state");
     await stateRef.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp(),lastSeg:null},{merge:true});
-
-    const snap = await roomRef.get();
-    const newRound = (snap.exists && snap.data().round) ? (snap.data().round+1) : 1;
+    const snap=await roomRef.get();
+    const newRound=(snap.exists && snap.data().round)?(snap.data().round+1):1;
 
     await roomRef.set({
       currentDrawer:nick,status:"jogando",word:w,hint:h,winner:null,
       round:newRound,startAt:firebase.firestore.FieldValue.serverTimestamp(),durationSec:120
     },{merge:true});
 
-    currentRound = newRound;
-    bindGuessesForRound(currentRound); // chat da rodada
+    currentRound=newRound;
+    bindGuessesForRound(currentRound);
     $endRound.disabled=false;
   }catch(e){
     console.error(e);
     isDrawer=false; gameStatus="—"; currentRound=0;
-    $drawerName.textContent="—"; $roundStatus.textContent="—"; $word.textContent="—"; $hint.textContent="—"; $timer.textContent="—";
+    $drawerName.textContent="—"; $roundStatus.textContent="—"; $word.textContent="—"; $hint.textContent="—"; $timer.textContent="—"; $timerHUD.textContent="--:--";
     $clear.disabled=true; $endRound.disabled=true; if(countdownInt){clearInterval(countdownInt);countdownInt=null}
     alert("Não foi possível iniciar o jogo. Verifique as regras do Firestore.");
   }
@@ -242,7 +298,7 @@ $endRound.addEventListener("click", async ()=>{
   await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true});
 });
 
-/* ---------- Sala / Timer ---------- */
+/* ---------- Sala / Timer / Overlay ---------- */
 function listenRoom(){
   if(unsubRoom)unsubRoom();
   const roomRef=db.collection("salas").doc(roomId);
@@ -255,27 +311,27 @@ function listenRoom(){
     isDrawer=(drawer===nick);
     $drawerName.textContent=drawer; $roundStatus.textContent=gameStatus;
 
-    // round -> rebind chat (e limpa)
+    // round -> (re)bind chat
     const r=data.round||0;
     if(r!==currentRound){ currentRound=r; bindGuessesForRound(currentRound); }
 
+    lastWinner=data.winner||null;
+    lastWord=data.word||lastWord;
+
     if(gameStatus==="jogando"){
+      hideOverlay();
       $word.textContent=isDrawer?(data.word||"—"):"🔒 (secreto)";
       $hint.textContent=data.hint||"—";
       $clear.disabled=isDrawer; $endRound.disabled=!isDrawer;
 
-      if(countdownInt){clearInterval(countdownInt);countdownInt=null}
-      // usa startAt do servidor; se não chegou ainda, faz fallback por 2min a partir de agora
-      let startMs = Date.now();
-      if(data.startAt && data.startAt.toMillis) startMs = data.startAt.toMillis();
-      const durMs = 1000 * (data.durationSec || 120);
-      const deadline = startMs + durMs;
-
-      const tick = async ()=>{
+      if(countdownInt){clearInterval(countdownInt)}
+      let startMs=Date.now(); if(data.startAt&&data.startAt.toMillis) startMs=data.startAt.toMillis();
+      const durMs=1000*(data.durationSec||120); const deadline=startMs+durMs;
+      const tick=async()=>{
         const left=Math.max(0,deadline-Date.now());
         const mm=String(Math.floor(left/60000)).padStart(2,"0");
         const ss=String(Math.floor((left%60000)/1000)).padStart(2,"0");
-        $timer.textContent=`${mm}:${ss}`;
+        $timer.textContent=`${mm}:${ss}`; $timerHUD.textContent=`${mm}:${ss}`;
         if(left<=0){
           clearInterval(countdownInt); countdownInt=null;
           if(isDrawer){ await db.collection("salas").doc(roomId).set({status:"encerrada",winner:null},{merge:true}); }
@@ -284,9 +340,19 @@ function listenRoom(){
       tick(); countdownInt=setInterval(tick,300);
     } else {
       if(countdownInt){clearInterval(countdownInt);countdownInt=null}
-      $timer.textContent="—"; $word.textContent="—"; $hint.textContent="—";
+      $timer.textContent="—"; $timerHUD.textContent="--:--";
+      $word.textContent="—"; $hint.textContent="—";
       $clear.disabled=true; $endRound.disabled=true;
-      if(lastStatus==="jogando"){ $chat.innerHTML=""; } // limpa ao encerrar
+
+      // Exibe overlay ao encerrar
+      if(lastStatus==="jogando"){
+        if(lastWinner){
+          showOverlay(`Parabéns, ${String(lastWinner).toUpperCase()} - ${String(lastWord||"").toUpperCase()}`);
+        }else{
+          showOverlay(`Tempo esgotado! A palavra era ${String(lastWord||"").toUpperCase()}`);
+        }
+      }
+      if(lastStatus!=="jogando"){ hideOverlay(); }
     }
     lastStatus=gameStatus;
   });
@@ -314,8 +380,7 @@ function listenState(){
   const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
   unsubState=ref.onSnapshot(doc=>{
     const data=doc.data()||{};
-    let cur=0;
-    if(data.clearedAt && data.clearedAt.toMillis) cur=data.clearedAt.toMillis();
+    let cur=0; if(data.clearedAt&&data.clearedAt.toMillis) cur=data.clearedAt.toMillis();
     else if(typeof data.clearedAt==="number") cur=data.clearedAt;
     if(cur && cur!==lastClearedAt){ lastClearedAt=cur; ctx.clearRect(0,0,$c.width,$c.height); }
     const s=data.lastSeg; if(s && s.by!==nick) drawSeg(s.p0,s.p1,s.color||"#111",s.size||6);
@@ -329,10 +394,7 @@ async function pushSeg(p0,p1,color,size){
   const ref=db.collection("salas").doc(roomId).collection("sync").doc("state");
   await ref.set({lastSeg:{by:nick,p0,p1,color,size:Number(size),ts:firebase.firestore.FieldValue.serverTimestamp()}},{merge:true});
 }
-let drawing=false,last=null;
-const canDraw=()=> isDrawer && gameStatus==="jogando";
-
-// Pointer Events (evita mouse+touch duplicados)
+let drawing=false,last=null; const canDraw=()=> isDrawer && gameStatus==="jogando";
 $c.addEventListener("pointerdown",e=>{ if(!canDraw())return; drawing=true; $c.setPointerCapture(e.pointerId); last=cssPos(e); e.preventDefault(); });
 $c.addEventListener("pointermove",async e=>{ if(!drawing||!canDraw())return; const p=cssPos(e); drawSeg(last,p,$color.value,Number($size.value)); try{await pushSeg(last,p,$color.value,Number($size.value))}catch{} last=p; e.preventDefault(); });
 $c.addEventListener("pointerup",e=>{ drawing=false; try{$c.releasePointerCapture(e.pointerId);}catch{} });
@@ -340,25 +402,27 @@ $c.addEventListener("pointercancel",()=>{ drawing=false; });
 $clear.addEventListener("click",async()=>{ if(!canDraw())return; ctx.clearRect(0,0,$c.width,$c.height); const ref=db.collection("salas").doc(roomId).collection("sync").doc("state"); await ref.set({clearedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); });
 $c.addEventListener("contextmenu",e=>e.preventDefault());
 
-/* ---------- Chat (filtrado por rodada no cliente) ---------- */
-function addMsg({nick,text,correct}){ const w=document.createElement("div"); w.className="msg"; const m=document.createElement("div"); m.className="meta"; m.textContent=nick+(correct?" acertou! 🎉":""); const b=document.createElement("div"); b.textContent=text; w.append(m,b); $chat.appendChild(w); $chat.scrollTop=$chat.scrollHeight; }
-
+/* ---------- Chat (ao lado do nome) ---------- */
+function addMsg({nick,text,correct}){
+  const row=document.createElement("div"); row.className="chat-row";
+  const name=document.createElement("div"); name.className="chat-name"; name.textContent=nick;
+  const msg=document.createElement("div"); msg.className="chat-text"; msg.textContent=text;
+  if(correct) msg.classList.add("chat-correct");
+  row.append(name,msg); $chat.appendChild(row); $chat.scrollTop=$chat.scrollHeight;
+}
 function bindGuessesForRound(round){
   if(unsubGuesses){unsubGuesses();unsubGuesses=null;}
-  $chat.innerHTML=""; // limpa visual
-  unsubGuesses = db.collection("salas").doc(roomId).collection("guesses")
+  $chat.innerHTML="";
+  unsubGuesses=db.collection("salas").doc(roomId).collection("guesses")
     .orderBy("ts","asc").limit(500)
     .onSnapshot(s=>{
       s.docChanges().forEach(ch=>{
-        if(ch.type!=="added") return;
-        const d=ch.doc.data()||{};
-        if((d.round||0)!==round) return;   // filtro no cliente (sem índice)
-        addMsg(d);
+        if(ch.type!=="added") return; const d=ch.doc.data()||{};
+        if((d.round||0)!==round) return; addMsg(d);
       });
       $chat.removeAttribute("aria-busy");
     });
 }
-
 $chatForm.addEventListener("submit",async e=>{
   e.preventDefault(); if(!$chatInput.value.trim())return;
   const text=$chatInput.value.trim(); $chatInput.value="";

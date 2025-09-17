@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Imagem & Ação — V3 (iniciar jogo, timer em ambos, terminar rodada)</title>
+  <title>Imagem & Ação — V4 (presença + timer global + terminar rodada)</title>
   <style>
     :root { --gap: 12px; --radius: 14px; --shadow: 0 10px 24px rgba(0,0,0,.08); }
     * { box-sizing: border-box; }
@@ -40,8 +40,8 @@
   <header>
     <div class="row">
       <div>
-        <h1>Imagem & Ação — V3</h1>
-        <div class="info">“Iniciar jogo” define o primeiro desenhista; só ele desenha. Timer de 2 min em ambas as telas. Dá para “Terminar rodada”.</div>
+        <h1>Imagem & Ação — V4</h1>
+        <div class="info">“Iniciar jogo” define o 1º desenhista. Só ele desenha. Timer de 2:00 visível para todos. “Terminar rodada” passa para o próximo.</div>
       </div>
       <div class="pill" id="status">desconectado</div>
     </div>
@@ -49,17 +49,11 @@
 
   <main>
     <div class="grid">
-      <!-- Coluna 1: conexão e sala -->
+      <!-- Coluna 1 -->
       <section class="card controls">
         <div class="row2">
-          <label>
-            <div>Apelido</div>
-            <input id="nick" placeholder="ex.: Alex" />
-          </label>
-          <label>
-            <div>Sala</div>
-            <input id="room" placeholder="ex.: geral" />
-          </label>
+          <label><div>Apelido</div><input id="nick" placeholder="ex.: Alex" /></label>
+          <label><div>Sala</div><input id="room" placeholder="ex.: geral" /></label>
         </div>
 
         <div class="row2">
@@ -81,8 +75,8 @@
         <div class="sep"></div>
 
         <div>
-          <div class="info"><strong>Palavra (só para desenhista):</strong> <span id="word" class="word">—</span></div>
-          <div class="info"><strong>Dica para todos:</strong> <span id="hint" class="hint">—</span></div>
+          <div class="info"><strong>Palavra (só desenhista):</strong> <span id="word" class="word">—</span></div>
+          <div class="info"><strong>Dica p/ todos:</strong> <span id="hint" class="hint">—</span></div>
           <div class="info"><strong>Desenhista atual:</strong> <span id="drawerName">—</span></div>
           <div class="info"><strong>Status:</strong> <span id="roundStatus">—</span></div>
           <div class="info"><strong>Tempo restante:</strong> <span id="timer" class="timer">—</span></div>
@@ -100,12 +94,12 @@
         </div>
       </section>
 
-      <!-- Coluna 2: canvas -->
+      <!-- Coluna 2 -->
       <section class="card" id="canvasWrap">
         <canvas id="c"></canvas>
       </section>
 
-      <!-- Coluna 3: jogadores e chat -->
+      <!-- Coluna 3 -->
       <section class="card">
         <div style="display:grid; gap:10px;">
           <div><strong>Jogadores</strong></div>
@@ -127,7 +121,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <script>
-    // ===== Configuração Firebase (a sua) =====
+    // ===== CONFIG FIREBASE =====
     const firebaseConfig = {
       apiKey: "AIzaSyA9FBaZDDJ_fOOWW4JNxoR_IbHCTG9CgqE",
       authDomain: "chatenvivo-6b518.firebaseapp.com",
@@ -138,12 +132,11 @@
       measurementId: "G-HF86GVYTVC"
     };
 
-    // Inicializa Firebase + Firestore
     let app, db;
     try { app = firebase.initializeApp(firebaseConfig); db = firebase.firestore(); document.getElementById("status").textContent = "SDK carregado"; }
-    catch (e) { document.getElementById("status").textContent = "erro na config"; console.error(e); }
+    catch(e){ document.getElementById("status").textContent = "erro na config"; console.error(e); }
 
-    // ======= Estado local e elementos =======
+    // ===== ELEMENTOS/ESTADO =====
     const $status = document.getElementById("status");
     const $nick = document.getElementById("nick");
     const $room = document.getElementById("room");
@@ -169,148 +162,141 @@
     const $chatInput = document.getElementById("chatInput");
     const $send = document.getElementById("send");
 
-    let roomId = "";
-    let nick = "";
-    let isDrawer = false;
+    let roomId = "", nick = "", isDrawer = false;
     let unsubRoom = null, unsubState = null, unsubGuesses = null, unsubPlayers = null;
-    let playersList = [];
+    let heartbeatInt = null, countdownInt = null;
+    let playersList = []; // apenas ativos
     let gameStatus = "—";
-    let countdownInt = null;
 
     const WORDS = ["casa","gato","árvore","carro","lua","peixe","pizza","livro","bicicleta","montanha"];
 
-    function getParam(name) {
-      const params = new URLSearchParams(location.search);
-      return params.get(name) || "";
-    }
+    function resizeCanvas(){ const r=$c.getBoundingClientRect(); $c.width = Math.floor(r.width); $c.height = Math.floor(r.height); }
+    window.addEventListener("resize", resizeCanvas); setTimeout(resizeCanvas, 0);
 
-    // Preenche pela URL
-    $nick.value = getParam("nick") || "";
-    $room.value = getParam("sala") || "geral";
-
-    // Canvas responsive
-    function resizeCanvas() {
-      const rect = $c.getBoundingClientRect();
-      $c.width = Math.floor(rect.width);
-      $c.height = Math.floor(rect.height);
-    }
-    window.addEventListener("resize", resizeCanvas);
-    setTimeout(resizeCanvas, 0);
-
-    // ========= Conexão =========
+    // ========= CONECTAR =========
     $connect.addEventListener("click", async () => {
       nick = ($nick.value || "Anon").trim();
       roomId = ($room.value || "geral").trim().toLowerCase();
-      if (!db) { alert("Firebase não configurado corretamente."); return; }
-      if (!nick) { alert("Escolha um apelido."); return; }
+      if (!db) return alert("Firebase não configurado.");
+      if (!nick) return alert("Escolha um apelido.");
 
-      $connect.disabled = true;
-      $leave.disabled = false;
-      $send.disabled = false;
-      $startGame.disabled = false; // só dispara manualmente
+      $connect.disabled = true; $leave.disabled = false; $send.disabled = false; $startGame.disabled = false;
       $status.textContent = "conectado";
 
       const playerRef = db.collection("salas").doc(roomId).collection("players").doc(nick);
-      await playerRef.set({ nick, joinedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      await playerRef.set({ nick, online: true, joinedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
-      listenRoom();
-      listenPlayers();
-      listenState();
-      listenGuesses();
+      // Heartbeat de presença (5s). Lista só mostra quem teve lastSeen nos últimos 15s.
+      heartbeatInt = setInterval(() => {
+        playerRef.set({ online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }, 5000);
+
+      // Tenta marcar offline ao fechar/ocultar
+      window.addEventListener("beforeunload", () => {
+        try { playerRef.set({ online:false, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(_) {}
+      });
+      document.addEventListener("visibilitychange", () => {
+        try { playerRef.set({ online: !document.hidden, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch(_) {}
+      });
+
+      listenRoom();    // estado da rodada
+      listenPlayers(); // presença
+      listenState();   // espelho do desenho
+      listenGuesses(); // chat
     });
 
     $leave.addEventListener("click", () => {
       [unsubRoom, unsubState, unsubGuesses, unsubPlayers].forEach(fn => fn && fn());
-      $connect.disabled = false;
-      $leave.disabled = true;
-      $send.disabled = true;
-      $startGame.disabled = true;
-      $endRound.disabled = true;
-      $clear.disabled = true;
-      $status.textContent = "desconectado";
-      isDrawer = false;
-      gameStatus = "—";
-      $word.textContent = "—";
-      $hint.textContent = "—";
-      $drawerName.textContent = "—";
-      $roundStatus.textContent = "—";
-      $timer.textContent = "—";
-      ctx.clearRect(0,0,$c.width,$c.height);
-      $players.innerHTML = "";
-      $chat.innerHTML = "";
+      if (heartbeatInt) { clearInterval(heartbeatInt); heartbeatInt = null; }
       if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
+      $connect.disabled = false; $leave.disabled = true; $send.disabled = true; $startGame.disabled = true; $endRound.disabled = true; $clear.disabled = true;
+      $status.textContent = "desconectado"; isDrawer = false; gameStatus = "—";
+      $word.textContent = "—"; $hint.textContent = "—"; $drawerName.textContent = "—"; $roundStatus.textContent = "—"; $timer.textContent = "—";
+      ctx.clearRect(0,0,$c.width,$c.height); $players.innerHTML = ""; $chat.innerHTML = "";
     });
 
-    // ========= Sala/rodada =========
+    // ========= RODADA =========
     async function startRound(drawerNick) {
       const word = WORDS[Math.floor(Math.random() * WORDS.length)];
       const hint = word.replace(/[a-záéíóúãõâêîôûç]/gi, " _ ");
-      const deadlineMillis = Date.now() + 120000; // 2 minutos
       const roomRef = db.collection("salas").doc(roomId);
       const stateRef = roomRef.collection("sync").doc("state");
-      // limpa espelho
+
       await stateRef.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp(), lastSeg: null }, { merge: true });
-      // atualiza estado da rodada
-      const roomSnap = await roomRef.get();
-      const round = (roomSnap.exists && roomSnap.data().round) ? (roomSnap.data().round + 1) : 1;
+
+      const snap = await roomRef.get();
+      const round = (snap.exists && snap.data().round) ? (snap.data().round + 1) : 1;
+
       await roomRef.set({
         currentDrawer: drawerNick,
         status: "jogando",
-        word, hint,
-        winner: null,
+        word, hint, winner: null,
         round,
-        deadlineMillis
+        // timer global para todos: startAt = serverTimestamp, somado a durationSec no cliente
+        startAt: firebase.firestore.FieldValue.serverTimestamp(),
+        durationSec: 120
       }, { merge: true });
     }
 
     function listenRoom() {
       if (unsubRoom) unsubRoom();
       const roomRef = db.collection("salas").doc(roomId);
+
+      let lastRoundSeen = null; // evita recriar timer várias vezes
+
       unsubRoom = roomRef.onSnapshot(doc => {
         const data = doc.data() || {};
         const prevStatus = gameStatus;
         gameStatus = data.status || "—";
         const drawer = data.currentDrawer || "—";
         isDrawer = (drawer === nick);
+
         $drawerName.textContent = drawer;
         $roundStatus.textContent = gameStatus;
         $word.textContent = isDrawer && gameStatus==="jogando" ? (data.word || "—") : (gameStatus==="jogando" ? "🔒 (secreto)" : "—");
         $hint.textContent = data.hint || "—";
 
-        // Botões habilitados
-        $startGame.disabled = (gameStatus === "jogando"); // não auto-inicia nunca
+        // Botões
+        $startGame.disabled = (gameStatus === "jogando"); // nunca auto-inicia
         const drawerAndPlaying = (isDrawer && gameStatus === "jogando");
         $clear.disabled = !drawerAndPlaying;
         $endRound.disabled = !drawerAndPlaying;
 
-        // Timer (mostrado para todos)
+        // Timer — aparece para todos e usa startAt + durationSec
         if (countdownInt) { clearInterval(countdownInt); countdownInt = null; }
-        if (gameStatus === "jogando" && data.deadlineMillis) {
-          const updateTimer = async () => {
-            const left = Math.max(0, data.deadlineMillis - Date.now());
+        if (gameStatus === "jogando" && data.startAt && data.startAt.toMillis) {
+          const startMs = data.startAt.toMillis();
+          const durMs = 1000 * (data.durationSec || 120);
+          const deadline = startMs + durMs;
+
+          const tick = async () => {
+            const left = Math.max(0, deadline - Date.now());
             const mm = String(Math.floor(left/60000)).padStart(2,"0");
             const ss = String(Math.floor((left%60000)/1000)).padStart(2,"0");
             $timer.textContent = mm+":"+ss;
             if (left <= 0) {
-              clearInterval(countdownInt); countdownInt=null;
-              if (isDrawer) { await advanceTurn("timeout"); }
+              clearInterval(countdownInt); countdownInt = null;
+              if (isDrawer) await advanceTurn("timeout");
             }
           };
-          updateTimer();
-          countdownInt = setInterval(updateTimer, 300);
+          tick();
+          countdownInt = setInterval(tick, 300);
         } else {
           $timer.textContent = "—";
         }
 
-        // Se acabou por acerto, o desenhista avança automaticamente
+        // Avança só quando a rodada que estava jogando foi encerrada
         if (prevStatus === "jogando" && gameStatus === "encerrada" && isDrawer) {
           advanceTurn("win");
         }
+
+        // Guarda round atual
+        if (data.round !== undefined) lastRoundSeen = data.round;
       });
     }
 
     async function advanceTurn(reason) {
-      // Próximo desenhista na ordem de entrada
+      // Próximo desenhista entre os **ativos**
       if (!playersList.length) return;
       const current = $drawerName.textContent;
       const idx = Math.max(0, playersList.indexOf(current));
@@ -322,14 +308,21 @@
       if (unsubPlayers) unsubPlayers();
       const ref = db.collection("salas").doc(roomId).collection("players");
       unsubPlayers = ref.orderBy("joinedAt").onSnapshot(snap => {
-        const list = [];
-        snap.forEach(d => list.push(d.id));
-        playersList = list.length ? list : snap.docs.map(d=>d.id).sort();
-        $players.innerHTML = playersList.map(n => (n===nick? "👤 " : "👥 ") + n).join("<br>");
+        const now = Date.now();
+        const active = [];
+        snap.forEach(d => {
+          const p = d.data() || {};
+          const seen = p.lastSeen && p.lastSeen.toMillis ? p.lastSeen.toMillis() : 0;
+          const isActive = (now - seen) <= 15000 && p.online !== false; // últimos 15s
+          if (isActive) active.push(d.id);
+        });
+        active.sort((a,b)=>a.localeCompare(b)); // ordem estável
+        playersList = active;
+        $players.innerHTML = playersList.map(n => (n===nick? "👤 ":"👥 ")+n).join("<br>") || "<em>Ninguém ativo</em>";
       });
     }
 
-    // ========= Espelho do desenho (doc único) =========
+    // ========= ESPELHO DO DESENHO =========
     function listenState() {
       if (unsubState) unsubState();
       const stateRef = db.collection("salas").doc(roomId).collection("sync").doc("state");
@@ -337,137 +330,68 @@
         const data = doc.data() || {};
         if (data.clearedAt) ctx.clearRect(0,0,$c.width,$c.height);
         const s = data.lastSeg;
-        if (s && s.by !== nick) {
-          drawSeg(s.p0, s.p1, s.color || "#111", s.size || 6);
-        }
+        if (s && s.by !== nick) drawSeg(s.p0, s.p1, s.color || "#111", s.size || 6);
       });
     }
 
-    // ========= Canvas & desenho =========
-    function pos(evt) {
-      const rect = $c.getBoundingClientRect();
-      const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-      const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      return [ Math.max(0, Math.min(1, x / rect.width)), Math.max(0, Math.min(1, y / rect.height)) ];
-    }
-    function drawSeg(p0, p1, color, size) {
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = color;
-      ctx.lineWidth = size;
-      ctx.beginPath();
-      ctx.moveTo(p0[0]*$c.width, p0[1]*$c.height);
-      ctx.lineTo(p1[0]*$c.width, p1[1]*$c.height);
-      ctx.stroke();
-    }
+    // ========= DESENHO =========
+    function pos(e){ const r=$c.getBoundingClientRect(); const X=e.touches?e.touches[0].clientX:e.clientX; const Y=e.touches?e.touches[0].clientY:e.clientY; return [Math.max(0,Math.min(1,(X-r.left)/r.width)), Math.max(0,Math.min(1,(Y-r.top)/r.height))];}
+    function drawSeg(p0,p1,color,size){ ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle=color; ctx.lineWidth=size; ctx.beginPath(); ctx.moveTo(p0[0]*$c.width,p0[1]*$c.height); ctx.lineTo(p1[0]*$c.width,p1[1]*$c.height); ctx.stroke(); }
     async function pushSeg(p0,p1,color,size){
       const ref = db.collection("salas").doc(roomId).collection("sync").doc("state");
       await ref.set({ lastSeg: { by:nick, p0, p1, color, size:Number(size), ts: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true });
     }
+    let drawing=false, last=null;
+    const canDraw = ()=> isDrawer && gameStatus==="jogando";
 
-    let drawing = false, last = null;
-    function canDraw(){ return isDrawer && gameStatus === "jogando"; }
+    $c.addEventListener("mousedown", e=>{ if(!canDraw()) return; drawing=true; last=pos(e); e.preventDefault(); });
+    $c.addEventListener("mousemove", async e=>{ if(!drawing||!canDraw()) return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{ await pushSeg(last,p,$color.value,Number($size.value)); }catch(_){} last=p; e.preventDefault(); });
+    window.addEventListener("mouseup", ()=>{ drawing=false; });
+    $c.addEventListener("touchstart", e=>{ if(!canDraw()) return; drawing=true; last=pos(e); e.preventDefault(); }, {passive:false});
+    $c.addEventListener("touchmove", async e=>{ if(!drawing||!canDraw()) return; const p=pos(e); drawSeg(last,p,$color.value,Number($size.value)); try{ await pushSeg(last,p,$color.value,Number($size.value)); }catch(_){} last=p; e.preventDefault(); }, {passive:false});
+    $c.addEventListener("touchend", ()=>{ drawing=false; });
 
-    $c.addEventListener("mousedown", e => { if(!canDraw()) return; drawing=true; last=pos(e); e.preventDefault(); });
-    $c.addEventListener("mousemove", async e => {
-      if(!drawing || !canDraw()) return;
-      const p = pos(e);
-      drawSeg(last, p, $color.value, Number($size.value));
-      try { await pushSeg(last, p, $color.value, Number($size.value)); } catch(e){}
-      last = p; e.preventDefault();
-    });
-    window.addEventListener("mouseup", () => { drawing=false; });
-    $c.addEventListener("touchstart", e => { if(!canDraw()) return; drawing=true; last=pos(e); e.preventDefault(); }, {passive:false});
-    $c.addEventListener("touchmove", async e => {
-      if(!drawing || !canDraw()) return;
-      const p = pos(e);
-      drawSeg(last, p, $color.value, Number($size.value));
-      try { await pushSeg(last, p, $color.value, Number($size.value)); } catch(e){}
-      last = p; e.preventDefault();
-    }, {passive:false});
-    $c.addEventListener("touchend", () => { drawing=false; });
+    $clear.addEventListener("click", async ()=>{ if(!canDraw()) return; ctx.clearRect(0,0,$c.width,$c.height); const ref=db.collection("salas").doc(roomId).collection("sync").doc("state"); await ref.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); });
 
-    $clear.addEventListener("click", async () => {
-      if (!canDraw()) return;
-      ctx.clearRect(0,0,$c.width,$c.height);
-      const ref = db.collection("salas").doc(roomId).collection("sync").doc("state");
-      await ref.set({ clearedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    });
-
-    // ========= Chat / palpites =========
+    // ========= CHAT =========
     function addMsg({nick, text, correct}) {
-      const wrap = document.createElement("div");
-      wrap.className = "msg";
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = nick + (correct ? " acertou! 🎉" : "");
-      const body = document.createElement("div");
-      body.textContent = text;
-      if (nick === window.nick) body.classList.add("you");
-      wrap.append(meta, body);
-      $chat.appendChild(wrap);
-      $chat.scrollTop = $chat.scrollHeight;
+      const wrap = document.createElement("div"); wrap.className="msg";
+      const meta = document.createElement("div"); meta.className="meta"; meta.textContent = nick + (correct ? " acertou! 🎉" : "");
+      const body = document.createElement("div"); body.textContent = text; if (nick===window.nick) body.classList.add("you");
+      wrap.append(meta, body); $chat.appendChild(wrap); $chat.scrollTop = $chat.scrollHeight;
     }
-
-    function listenGuesses() {
+    function listenGuesses(){
       if (unsubGuesses) unsubGuesses();
-      unsubGuesses = db.collection("salas").doc(roomId).collection("guesses")
-        .orderBy("ts","asc").limit(500)
-        .onSnapshot(snap => {
-          snap.docChanges().forEach(ch => {
-            if (ch.type === "added") addMsg(ch.doc.data());
-          });
-          $chat.removeAttribute("aria-busy");
-        });
+      unsubGuesses = db.collection("salas").doc(roomId).collection("guesses").orderBy("ts","asc").limit(500)
+        .onSnapshot(snap=>{ snap.docChanges().forEach(ch=>{ if (ch.type==="added") addMsg(ch.doc.data()); }); $chat.removeAttribute("aria-busy"); });
     }
-
-    function normalize(s) {
-      return (s||"").toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-        .replace(/[^a-z0-9áéíóúãõâêîôûç ]/gi,"")
-        .trim();
-    }
-
-    $chatForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      if (!$chatInput.value.trim()) return;
-      const text = $chatInput.value.trim();
-      $chatInput.value = "";
-
-      const roomDoc = await db.collection("salas").doc(roomId).get();
-      const data = roomDoc.data() || {};
-      const correct = (data.status === "jogando") && normalize(text) === normalize(data.word);
-
-      await db.collection("salas").doc(roomId).collection("guesses").add({
-        nick, text, correct: !!correct,
-        ts: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-      if (correct) {
-        await db.collection("salas").doc(roomId).set({ status: "encerrada", winner: nick }, { merge: true });
-      }
+    const normalize = s => (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g,"").trim();
+    $chatForm.addEventListener("submit", async e=>{
+      e.preventDefault(); if(!$chatInput.value.trim()) return;
+      const text=$chatInput.value.trim(); $chatInput.value="";
+      const roomDoc = await db.collection("salas").doc(roomId).get(); const data=roomDoc.data()||{};
+      const correct = (data.status==="jogando") && normalize(text)===normalize(data.word);
+      await db.collection("salas").doc(roomId).collection("guesses").add({ nick, text, correct:!!correct, ts: firebase.firestore.FieldValue.serverTimestamp() });
+      if (correct) await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:nick }, { merge:true });
     });
 
-    // ========= Iniciar JOGO (quem clica vira o 1º desenhista) =========
-    $startGame.addEventListener("click", async () => {
+    // ========= BOTÕES =========
+    document.getElementById("startGame").addEventListener("click", async ()=>{
       const roomRef = db.collection("salas").doc(roomId);
       const snap = await roomRef.get();
       const status = snap.exists ? snap.data().status : null;
       if (status === "jogando") return alert("Já existe uma rodada em andamento.");
-      await startRound(nick); // começa com quem clicou
+      await startRound(nick);
     });
 
-    // ========= Terminar rodada (desistir/passar) =========
-    $endRound.addEventListener("click", async () => {
-      if (!isDrawer || gameStatus !== "jogando") return;
-      await db.collection("salas").doc(roomId).set({ status: "encerrada", winner: null }, { merge: true });
-      // listenRoom detecta encerramento e chama advanceTurn() no desenhista
+    document.getElementById("endRound").addEventListener("click", async ()=>{
+      if (!isDrawer || gameStatus!=="jogando") return;
+      await db.collection("salas").doc(roomId).set({ status:"encerrada", winner:null }, { merge:true });
+      // listenRoom cuidará de avançar
     });
 
-    // Desabilitar menu do botão direito
-    $c.addEventListener("contextmenu", e => e.preventDefault());
+    // UX
+    $c.addEventListener("contextmenu", e=>e.preventDefault());
   </script>
 </body>
 </html>

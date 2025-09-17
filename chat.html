@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo: Interação ao vivo (Firebase + Firestore)</title>
+  <style>
+    :root { --gap: 12px; --radius: 14px; --shadow: 0 6px 18px rgba(0,0,0,.08); }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #f7f7f8; color: #111; }
+    header { position: sticky; top: 0; background: white; box-shadow: var(--shadow); padding: 14px 18px; z-index: 10; }
+    header h1 { font-size: 18px; margin: 0 0 6px; }
+    header .row { display: grid; grid-template-columns: 1fr auto; gap: var(--gap); align-items: center; }
+    .card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+    main { max-width: 840px; margin: 24px auto; padding: 0 16px; display: grid; gap: var(--gap); }
+    #chat { height: 54vh; overflow: auto; padding: 12px; border: 1px solid #eee; border-radius: var(--radius); background: #fff; }
+    .msg { margin: 0 0 10px; display: grid; gap: 4px; }
+    .meta { font-size: 12px; color: #666; }
+    .you { background: #eef7ff; padding: 8px 10px; border-radius: 10px; }
+    form { display: grid; grid-template-columns: 1fr auto; gap: var(--gap); }
+    input, button, select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; }
+    button { cursor: pointer; border: 0; background: #111; color: #fff; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+    .note { font-size: 12px; color: #444; line-height: 1.4; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 6px; }
+    .pill { font-size: 12px; background: #111; color:white; padding: 4px 8px; border-radius: 999px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <div>
+        <h1>Interação ao vivo (sem backend próprio)</h1>
+        <div class="note">
+          Abra <strong>esta mesma página em duas abas</strong> (ou envie o link para outra pessoa), escolha a mesma sala e troque mensagens ao vivo.
+        </div>
+      </div>
+      <div class="pill" id="status">desconectado</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="row2">
+        <label>
+          <div>Sua identificação (apelido):</div>
+          <input id="nick" placeholder="ex.: Alex" />
+        </label>
+        <label>
+          <div>Nome da sala:</div>
+          <input id="room" placeholder="ex.: geral" />
+        </label>
+      </div>
+      <div style="margin-top: 12px; display: grid; grid-template-columns: auto auto 1fr; gap: var(--gap); align-items:center;">
+        <button id="conectar">Conectar</button>
+        <button id="sair" disabled>Sair</button>
+        <div class="note">Dica: você também pode definir via URL: <code>?sala=geral&nick=Alex</code></div>
+      </div>
+    </div>
+
+    <div id="chat" class="card" aria-live="polite" aria-busy="true"></div>
+
+    <form id="form" class="card">
+      <input id="texto" placeholder="Escreva uma mensagem e pressione Enter…" autocomplete="off" />
+      <button id="enviar" type="submit" disabled>Enviar</button>
+    </form>
+
+    <div class="card note">
+      <strong>Como funciona?</strong>
+      <ol>
+        <li>Este exemplo usa <em>Firebase Firestore</em> para sincronizar as mensagens em tempo real.</li>
+        <li>Você só precisa criar um projeto no Firebase, habilitar o Firestore e trocar a configuração abaixo.</li>
+        <li>Para testes rápidos, use regras abertas (somente durante o desenvolvimento). Em produção, <strong>restrinja as regras de segurança</strong>.</li>
+      </ol>
+      <details>
+        <summary>Configurar regras de teste (temporárias)</summary>
+        <pre>// Firestore Security Rules (desenvolvimento — não use em produção)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true; // ABERTO — apenas para testes
+    }
+  }
+}</pre>
+      </details>
+    </div>
+  </main>
+
+  <!-- Firebase SDKs (compat para simplicidade) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    // Configuração Firebase do seu projeto
+    const firebaseConfig = {
+      apiKey: "AIzaSyA9FBaZDDJ_fOOWW4JNxoR_IbHCTG9CgqE",
+      authDomain: "chatenvivo-6b518.firebaseapp.com",
+      projectId: "chatenvivo-6b518",
+      storageBucket: "chatenvivo-6b518.firebasestorage.app",
+      messagingSenderId: "351680385901",
+      appId: "1:351680385901:web:8105134053b010cd69c064",
+      measurementId: "G-HF86GVYTVC"
+    };
+
+    // Inicializa Firebase + Firestore
+    let app, db;
+    try {
+      app = firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+      document.getElementById("status").textContent = "SDK carregado";
+    } catch (e) {
+      document.getElementById("status").textContent = "erro na config";
+      console.error(e);
+    }
+
+    // Util: pegar parâmetro de URL
+    function getParam(name) {
+      const params = new URLSearchParams(location.search);
+      return params.get(name) || "";
+    }
+
+    // Estado local
+    let roomId = "";
+    let nick = "";
+    let unsub = null; // função para parar a assinatura em tempo real
+
+    const $nick = document.getElementById("nick");
+    const $room = document.getElementById("room");
+    const $con = document.getElementById("conectar");
+    const $out = document.getElementById("sair");
+    const $form = document.getElementById("form");
+    const $input = document.getElementById("texto");
+    const $send = document.getElementById("enviar");
+    const $chat = document.getElementById("chat");
+    const $status = document.getElementById("status");
+
+    // Preenche a partir da URL, se existir
+    $nick.value = getParam("nick") || "";
+    $room.value = getParam("sala") || "geral";
+
+    function addMsg(doc) {
+      const data = doc.data();
+      const wrap = document.createElement("div");
+      wrap.className = "msg";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const ts = data.ts?.toDate ? data.ts.toDate() : new Date();
+      const hh = String(ts.getHours()).padStart(2, "0");
+      const mm = String(ts.getMinutes()).padStart(2, "0");
+      meta.textContent = `${data.nick || "anon"} • ${hh}:${mm}`;
+      const text = document.createElement("div");
+      text.textContent = data.text || "";
+      if ((data.nick || "") === nick) text.classList.add("you");
+      wrap.append(meta, text);
+      $chat.appendChild(wrap);
+    }
+
+    function clearChat() { $chat.innerHTML = ""; }
+
+    async function connect() {
+      nick = ($nick.value || "Anon").trim();
+      roomId = ($room.value || "geral").trim().toLowerCase();
+
+      if (!db) { alert("Firebase não configurado corretamente."); return; }
+
+      // Bloqueia UI mínima
+      $con.disabled = true;
+      $out.disabled = false;
+      $send.disabled = false;
+      $input.focus();
+      $status.textContent = "conectado";
+
+      clearChat();
+      // Assina a coleção de mensagens da sala
+      const ref = db.collection("salas").doc(roomId).collection("mensagens")
+                    .orderBy("ts", "asc").limit(500);
+
+      unsub = ref.onSnapshot((snap) => {
+        if (snap.metadata.fromCache) {
+          $chat.setAttribute("aria-busy", "true");
+        } else {
+          $chat.removeAttribute("aria-busy");
+        }
+        // Render incremental (adiciona somente mudanças)
+        snap.docChanges().forEach(change => {
+          if (change.type === "added") {
+            addMsg(change.doc);
+            // auto-scroll suave
+            $chat.scrollTo({ top: $chat.scrollHeight, behavior: "smooth" });
+          }
+        });
+      }, (err) => {
+        console.error(err);
+        alert("Erro ao conectar no Firestore. Verifique as regras e a configuração.");
+        disconnect(true);
+      });
+    }
+
+    function disconnect(silent=false) {
+      if (unsub) { unsub(); unsub = null; }
+      $con.disabled = false;
+      $out.disabled = true;
+      $send.disabled = true;
+      $status.textContent = "desconectado";
+      if (!silent) clearChat();
+    }
+
+    async function sendMessage(text) {
+      if (!text.trim()) return;
+      try {
+        const docRef = db.collection("salas").doc(roomId).collection("mensagens").doc();
+        await docRef.set({
+          nick,
+          text: text.trim(),
+          ts: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        $input.value = "";
+      } catch (e) {
+        console.error(e);
+        alert("Falha ao enviar. Verifique as regras do Firestore.");
+      }
+    }
+
+    // Eventos
+    $con.addEventListener("click", connect);
+    $out.addEventListener("click", () => disconnect(false));
+    $form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if ($send.disabled) return;
+      sendMessage($input.value);
+    });
+
+    // Conecta automaticamente se a URL já tiver os parâmetros
+    window.addEventListener("load", () => {
+      if ($room.value) connect();
+    });
+  </script>
+</body>
+</html>
